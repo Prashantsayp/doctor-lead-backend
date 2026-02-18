@@ -6,7 +6,7 @@ import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { UsersModule } from './user/user.module'
 import { AuthModule } from './auth/auth.module';
-// import { DoctorLeadModule } from './doctor-lead/doctor-lead.module';
+import { DoctorLeadModule } from './doctor-lead/doctor-lead.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -22,7 +22,7 @@ import { AuthModule } from './auth/auth.module';
 
     AuthModule,
 
-    // DoctorLeadModule,
+    DoctorLeadModule,
 
   ],
   controllers: [AppController],
