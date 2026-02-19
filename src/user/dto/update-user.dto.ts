@@ -7,7 +7,6 @@ export class UpdateUserDto {
 
   @IsOptional()
   designation?: string
-
   @IsOptional()
   @IsEmail()
   email?: string
