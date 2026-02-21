@@ -18,7 +18,6 @@ export class UserService {
     private readonly userModel: Model<UserDocument>,
   ) {}
 
-  // ================= CREATE USER =================
   async create(createDto: CreateUserDto) {
     const email = String(createDto.email || '').toLowerCase().trim()
 
@@ -41,14 +40,63 @@ export class UserService {
       const { password, ...safe } = obj
       return safe
     } catch (err: any) {
-      // ✅ DB duplicate protection
-      if (err?.code === 11000) {
-        throw new BadRequestException('Email already exists')
-      }
+      if (err?.code === 11000) throw new BadRequestException('Email already exists')
       throw err
     }
   }
 
+  // ✅ NEW: Paginated list with total count
+  async findAllPaginated(params: {
+    page: number
+    limit: number
+    q?: string
+    role?: string
+    status?: string
+  }) {
+    const { page, limit, q, role, status } = params
+
+    const filter: any = {}
+
+    if (role) filter.role = role
+    if (status) filter.status = status
+
+    if (q) {
+      const safe = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // escape regex
+      const rx = new RegExp(safe, 'i')
+      filter.$or = [
+        { name: rx },
+        { email: rx },
+        { designation: rx },
+        { role: rx },
+        { status: rx },
+      ]
+    }
+
+    const skip = (page - 1) * limit
+
+    const [items, total] = await Promise.all([
+      this.userModel
+        .find(filter)
+        .select('-password')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.userModel.countDocuments(filter),
+    ])
+
+    const pages = Math.max(Math.ceil(total / limit), 1)
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      pages,
+    }
+  }
+
+  // (optional) old findAll can stay or remove
   async findAll() {
     return this.userModel.find().select('-password').sort({ createdAt: -1 }).lean()
   }
@@ -66,20 +114,14 @@ export class UserService {
     const updateData: any = {}
 
     if (updateDto.name !== undefined) updateData.name = updateDto.name.trim()
-    if (updateDto.designation !== undefined)
-      updateData.designation = updateDto.designation.trim()
+    if (updateDto.designation !== undefined) updateData.designation = updateDto.designation.trim()
     if (updateDto.role !== undefined) updateData.role = updateDto.role
     if (updateDto.status !== undefined) updateData.status = updateDto.status
 
     if (updateDto.email !== undefined) {
       const email = updateDto.email.toLowerCase().trim()
-
-      const emailTaken = await this.userModel
-        .findOne({ email, _id: { $ne: id } })
-        .lean()
-
+      const emailTaken = await this.userModel.findOne({ email, _id: { $ne: id } }).lean()
       if (emailTaken) throw new BadRequestException('Email already exists')
-
       updateData.email = email
     }
 
@@ -92,21 +134,15 @@ export class UserService {
         .findByIdAndUpdate(id, updateData, { new: true })
         .select('-password')
         .lean()
-
       return updated
     } catch (err: any) {
-      if (err?.code === 11000) {
-        throw new BadRequestException('Email already exists')
-      }
+      if (err?.code === 11000) throw new BadRequestException('Email already exists')
       throw err
     }
   }
 
   async delete(id: string) {
-    const deleted = await this.userModel
-      .findByIdAndDelete(id)
-      .select('-password')
-      .lean()
+    const deleted = await this.userModel.findByIdAndDelete(id).select('-password').lean()
     if (!deleted) throw new NotFoundException('User not found')
     return { message: 'User deleted successfully', deletedUser: deleted }
   }
@@ -116,8 +152,6 @@ export class UserService {
   }
 
   async findByEmailWithPassword(email: string) {
-    return this.userModel
-      .findOne({ email: email.toLowerCase().trim() })
-      .select('+password')
+    return this.userModel.findOne({ email: email.toLowerCase().trim() }).select('+password')
   }
 }

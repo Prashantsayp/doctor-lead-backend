@@ -17,9 +17,6 @@ export class DoctorLeadService {
     private readonly doctorLeadModel: Model<DoctorLeadDocument>,
   ) {}
 
-  // =========================
-  // ✅ COMMON HELPERS
-  // =========================
 
   private cleanStr(v: any) {
     return String(v ?? '').trim()
@@ -166,6 +163,38 @@ export class DoctorLeadService {
     return lead
   }
 
+
+  async count(query?: { search?: any }) {
+  const search = this.cleanStr(query?.search)
+
+  const baseFilter: any = {}
+  let searchFilter: any = {}
+
+  if (search) {
+    searchFilter = {
+      $or: [
+        { fullName: { $regex: search, $options: 'i' } },
+        { mobileNumber: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { registrationNumber: { $regex: search, $options: 'i' } },
+        { remarks: { $regex: search, $options: 'i' } },
+        { loanType: { $elemMatch: { $regex: search, $options: 'i' } } },
+      ],
+    }
+  }
+
+  const [totalDoctors, searchTotal] = await Promise.all([
+    this.doctorLeadModel.countDocuments(baseFilter),   // ✅ overall total
+    search
+      ? this.doctorLeadModel.countDocuments(searchFilter) // ✅ filtered total
+      : Promise.resolve(null),
+  ])
+
+  return {
+    totalDoctors,              // 📊 Total in DB
+    searchTotal: searchTotal ?? totalDoctors, // 🔎 If search, return filtered else total
+  }
+}
   async update(id: string, dto: UpdateDoctorLeadDto) {
     if (!isValidObjectId(id)) throw new BadRequestException('Invalid id')
 
