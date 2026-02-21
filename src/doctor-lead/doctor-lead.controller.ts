@@ -35,6 +35,10 @@ export class DoctorLeadController {
     return this.doctorLeadService.findAll({ page, limit, search })
   }
 
+@Get('count')
+count(@Query('search') search?: string) {
+  return this.doctorLeadService.count({ search })
+}
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.doctorLeadService.findOne(id)
