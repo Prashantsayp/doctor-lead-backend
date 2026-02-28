@@ -12,24 +12,31 @@ import {
 } from 'class-validator'
 
 export class CreateDoctorLeadDto {
-  // ✅ REQUIRED
   @IsNotEmpty({ message: 'Full name is required' })
   @IsString()
   fullName: string
 
   @IsNotEmpty({ message: 'Mobile number is required' })
-  @Matches(/^[6-9]\d{9}$/, { message: 'Mobile number must be 10 digit Indian number' })
+  @Matches(/^(\+?91[\s-]?)?[6-9]\d{9}$/, { message: 'Mobile number must be valid Indian number' })
   mobileNumber: string
 
-  // ✅ REQUIRED
   @IsNotEmpty({ message: 'City/Pin is required' })
   @IsString()
   cityOrPinCode: string
 
-  // ✅ OPTIONAL
   @IsOptional()
-  @Matches(/^[A-Z0-9/-]+$/, { message: 'Invalid registration number' })
+  @Matches(/^[A-Z0-9/-]+$/i, { message: 'Invalid registration number' })
   registrationNumber?: string
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i, { message: 'Invalid PAN format' })
+  panNumber?: string
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\s*\d{4}\s*\d{4}\s*\d{4}\s*$/, { message: 'Invalid Aadhar number' })
+  aadharNumber?: string
 
   @IsOptional()
   @IsEmail({}, { message: 'Invalid email address' })
@@ -54,7 +61,6 @@ export class CreateDoctorLeadDto {
   @IsString()
   remarks?: string
 
-  // ✅ Income
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -70,7 +76,6 @@ export class CreateDoctorLeadDto {
   @Min(0)
   otherIncomeSources?: number
 
-  // ✅ Obligations
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -90,7 +95,6 @@ export class CreateDoctorLeadDto {
   @IsBoolean()
   hasOverdue?: boolean
 
-  // ✅ Assets
   @IsOptional()
   @IsBoolean()
   hasProperty?: boolean
@@ -105,14 +109,9 @@ export class CreateDoctorLeadDto {
   @Min(0)
   medicalEquipmentValue?: number
 
-  // ✅ Credit
   @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(900)
   cibilScore?: number | null
-
-  @IsOptional()
-  @IsBoolean()
-  consent?: boolean
 }
