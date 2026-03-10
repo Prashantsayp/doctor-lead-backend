@@ -106,7 +106,7 @@ export class DoctorLeadController {
   @Post('bulk-sync/upload')
   @UseInterceptors(
     FileInterceptor('file', {
-      limits: { fileSize: 25 * 1024 * 1024 },
+      limits: { fileSize: 50 * 1024 * 1024,},
       fileFilter: (req, file, cb) => {
         const name = (file.originalname || '').toLowerCase()
         const ok = name.endsWith('.csv') || name.endsWith('.xlsx')
