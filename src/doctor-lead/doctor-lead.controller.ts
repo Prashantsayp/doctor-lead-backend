@@ -46,13 +46,16 @@ export class DoctorLeadController {
     @Query('keyword') keyword?: string,
     @Query('query') queryText?: string,
     @Query('verified') verified?: string,
+    @Query('profession') profession?: string,
   ) {
     const finalSearch = (search ?? q ?? keyword ?? queryText ?? '').toString().trim()
+
     return this.doctorLeadService.findAll({
       page,
       limit,
       search: finalSearch || undefined,
       verified,
+      profession,
     })
   }
 
@@ -63,16 +66,20 @@ export class DoctorLeadController {
     @Query('keyword') keyword?: string,
     @Query('query') queryText?: string,
     @Query('verified') verified?: string,
+    @Query('profession') profession?: string,
   ) {
     const finalSearch = (search ?? q ?? keyword ?? queryText ?? '').toString().trim()
+
     return this.doctorLeadService.count({
       search: finalSearch || undefined,
       verified,
+      profession,
     })
   }
 
   @Get('exists')
   exists(
+    @Query('profession') profession?: string,
     @Query('registrationNumber') registrationNumber?: string,
     @Query('panNumber') panNumber?: string,
     @Query('mobileNumber') mobileNumber?: string,
@@ -80,6 +87,7 @@ export class DoctorLeadController {
     @Query('aadharNumber') aadharNumber?: string,
   ) {
     return this.doctorLeadService.exists({
+      profession,
       registrationNumber,
       panNumber,
       mobileNumber,
@@ -106,7 +114,7 @@ export class DoctorLeadController {
   @Post('bulk-sync/upload')
   @UseInterceptors(
     FileInterceptor('file', {
-      limits: { fileSize: 50 * 1024 * 1024,},
+      limits: { fileSize: 50 * 1024 * 1024 },
       fileFilter: (req, file, cb) => {
         const name = (file.originalname || '').toLowerCase()
         const ok = name.endsWith('.csv') || name.endsWith('.xlsx')
