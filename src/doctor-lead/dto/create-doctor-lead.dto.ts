@@ -2,6 +2,7 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
+  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -10,14 +11,24 @@ import {
   Min,
   Max,
 } from 'class-validator'
+import { Type } from 'class-transformer'
+import { LeadProfession } from '../schemas/doctor-lead.schema'
 
 export class CreateDoctorLeadDto {
+  @IsNotEmpty({ message: 'Profession is required' })
+  @IsEnum(LeadProfession, {
+    message: 'Profession must be one of DOCTOR, CA, LAWYER, ENGINEER',
+  })
+  profession: LeadProfession
+
   @IsNotEmpty({ message: 'Full name is required' })
   @IsString()
   fullName: string
 
   @IsNotEmpty({ message: 'Mobile number is required' })
-  @Matches(/^(\+?91[\s-]?)?[6-9]\d{9}$/, { message: 'Mobile number must be valid Indian number' })
+  @Matches(/^(\+?91[\s-]?)?[6-9]\d{9}$/, {
+    message: 'Mobile number must be valid Indian number',
+  })
   mobileNumber: string
 
   @IsNotEmpty({ message: 'City/Pin is required' })
@@ -43,6 +54,7 @@ export class CreateDoctorLeadDto {
   email?: string
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   yearsOfPractice?: number
@@ -62,26 +74,31 @@ export class CreateDoctorLeadDto {
   remarks?: string
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   monthlyGrossIncome?: number
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   monthlyNetIncome?: number
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   otherIncomeSources?: number
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   monthlyEmi?: number
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   activeLoans?: number
@@ -92,24 +109,29 @@ export class CreateDoctorLeadDto {
   loanType?: string[]
 
   @IsOptional()
+  @Type(() => Boolean)
   @IsBoolean()
   hasOverdue?: boolean
 
   @IsOptional()
+  @Type(() => Boolean)
   @IsBoolean()
   hasProperty?: boolean
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   propertyValue?: number
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   medicalEquipmentValue?: number
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   @Max(900)

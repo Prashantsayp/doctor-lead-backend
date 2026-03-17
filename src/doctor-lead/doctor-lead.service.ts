@@ -6,7 +6,7 @@ import { parse as csvParse } from 'csv-parse/sync'
 
 import { CreateDoctorLeadDto } from './dto/create-doctor-lead.dto'
 import { UpdateDoctorLeadDto } from './dto/update-doctor-lead.dto'
-import { DoctorLead, DoctorLeadDocument } from './schemas/doctor-lead.schema'
+import { DoctorLead, DoctorLeadDocument, LeadProfession } from './schemas/doctor-lead.schema'
 
 type BulkRow = Record<string, any>
 
@@ -54,6 +54,18 @@ export class DoctorLeadService {
     return a ? a : undefined
   }
 
+  private normProfession(v: any): LeadProfession | undefined {
+    const p = this.cleanStr(v).toUpperCase()
+
+    if (!p) return undefined
+    if (p === 'DOCTOR') return LeadProfession.DOCTOR
+    if (p === 'CA' || p === 'CHARTERED ACCOUNTANT') return LeadProfession.CA
+    if (p === 'LAWYER' || p === 'ADVOCATE') return LeadProfession.LAWYER
+    if (p === 'ENGINEER') return LeadProfession.ENGINEER
+
+    return undefined
+  }
+
   private computeVerified(reg?: string): boolean {
     return Boolean(reg && String(reg).trim().length > 0)
   }
@@ -86,12 +98,14 @@ export class DoctorLeadService {
   }
 
   async exists(query: {
+    profession?: any
     registrationNumber?: any
     panNumber?: any
     mobileNumber?: any
     email?: any
     aadharNumber?: any
   }) {
+    const profession = this.normProfession(query?.profession)
     const reg = this.normRegNoOrUndefined(query?.registrationNumber)
     const pan = this.normPANOrUndefined(query?.panNumber)
     const mob = this.normMobile(query?.mobileNumber)
@@ -109,9 +123,12 @@ export class DoctorLeadService {
       return { exists: false, matchedOn: [], leadId: null }
     }
 
+    const filter: any = { $or: or }
+    if (profession) filter.profession = profession
+
     const existing = await this.doctorLeadModel
-      .findOne({ $or: or })
-      .select('_id fullName registrationNumber panNumber mobileNumber email aadharNumber')
+      .findOne(filter)
+      .select('_id profession fullName registrationNumber panNumber mobileNumber email aadharNumber')
       .lean()
 
     if (!existing) {
@@ -130,14 +147,17 @@ export class DoctorLeadService {
       matchedOn,
       leadId: String(existing._id),
       fullName: existing.fullName || null,
+      profession: (existing as any).profession || null,
     }
   }
 
   async create(dto: CreateDoctorLeadDto) {
+    const profession = this.normProfession((dto as any).profession)
     const fullName = this.cleanStr(dto.fullName)
     const mobileNumber = this.normMobile(dto.mobileNumber)
     const cityOrPinCode = this.cleanStr(dto.cityOrPinCode)
 
+    if (!profession) throw new BadRequestException('profession is required')
     if (!fullName) throw new BadRequestException('fullName is required')
     if (!mobileNumber) throw new BadRequestException('mobileNumber is required')
     if (!cityOrPinCode) throw new BadRequestException('cityOrPinCode is required')
@@ -148,12 +168,14 @@ export class DoctorLeadService {
     const email = this.normEmailOrUndefined(dto.email)
 
     const dup = await this.exists({
+      profession,
       registrationNumber: reg,
       panNumber,
       mobileNumber,
       email,
       aadharNumber,
     })
+
     if (dup?.exists) {
       throw new BadRequestException({
         message: 'Lead already exists. New lead not created.',
@@ -163,19 +185,22 @@ export class DoctorLeadService {
     }
 
     const payload: Partial<DoctorLead> = {
+      profession,
       fullName,
       mobileNumber,
       cityOrPinCode,
 
       ...(email ? { email } : {}),
       ...(reg ? { registrationNumber: reg } : {}),
-      ...(panNumber ? ({ panNumber } as any) : {}),
-      ...(aadharNumber ? ({ aadharNumber } as any) : {}),
+      ...(panNumber ? { panNumber } : {}),
+      ...(aadharNumber ? { aadharNumber } : {}),
 
       isVerified: this.computeVerified(reg),
 
       yearsOfPractice:
-        dto.yearsOfPractice !== undefined && dto.yearsOfPractice !== null ? this.toNum(dto.yearsOfPractice) : undefined,
+        dto.yearsOfPractice !== undefined && dto.yearsOfPractice !== null
+          ? this.toNum(dto.yearsOfPractice)
+          : undefined,
 
       qualification: Array.isArray(dto.qualification)
         ? dto.qualification.map((x) => this.cleanStr(x)).filter(Boolean)
@@ -184,6 +209,8 @@ export class DoctorLeadService {
       practiceType: Array.isArray(dto.practiceType)
         ? dto.practiceType.map((x) => this.cleanStr(x)).filter(Boolean)
         : [],
+
+      remarks: (dto as any).remarks ? this.cleanStr((dto as any).remarks) : '',
 
       monthlyGrossIncome: dto.monthlyGrossIncome !== undefined ? this.toNum(dto.monthlyGrossIncome) : 0,
       monthlyNetIncome: dto.monthlyNetIncome !== undefined ? this.toNum(dto.monthlyNetIncome) : 0,
@@ -214,12 +241,17 @@ export class DoctorLeadService {
     }
   }
 
-  async findAll(query?: { page?: any; limit?: any; search?: any; verified?: any }) {
+  async findAll(query?: { page?: any; limit?: any; search?: any; verified?: any; profession?: any }) {
     const page = Math.max(1, Number(query?.page || 1))
     const limit = Math.min(100, Math.max(1, Number(query?.limit || 20)))
     const skip = (page - 1) * limit
     const rawSearch = this.cleanStr(query?.search)
     const filter: any = {}
+
+    const profession = this.normProfession(query?.profession)
+    if (profession) {
+      filter.profession = profession
+    }
 
     if (rawSearch) {
       const search = this.escapeRegex(rawSearch)
@@ -227,8 +259,8 @@ export class DoctorLeadService {
       const mobileOnly = rawSearch.replace(/\D/g, '')
 
       filter.$or = [
-        { fullName: { $regex: search, $options: 'i' } }, 
-        { cityOrPinCode: { $regex: search, $options: 'i' } }, 
+        { fullName: { $regex: search, $options: 'i' } },
+        { cityOrPinCode: { $regex: search, $options: 'i' } },
         ...(mobileOnly ? [{ mobileNumber: { $regex: this.escapeRegex(mobileOnly), $options: 'i' } }] : []),
         ...(isNum ? [{ cibilScore: Number(rawSearch) }] : []),
       ]
@@ -246,10 +278,15 @@ export class DoctorLeadService {
     return { items, page, limit, total, totalPages: Math.ceil(total / limit) }
   }
 
-  async count(query?: { search?: any; verified?: any }) {
+  async count(query?: { search?: any; verified?: any; profession?: any }) {
     const rawSearch = this.cleanStr(query?.search)
 
     const baseFilter: any = {}
+    const profession = this.normProfession(query?.profession)
+    if (profession) {
+      baseFilter.profession = profession
+    }
+
     if (query?.verified !== undefined && query?.verified !== '') {
       baseFilter.isVerified = String(query.verified) === 'true'
     }
@@ -296,6 +333,12 @@ export class DoctorLeadService {
     const $set: any = {}
     const $unset: any = {}
 
+    if ((dto as any).profession !== undefined) {
+      const profession = this.normProfession((dto as any).profession)
+      if (!profession) throw new BadRequestException('Invalid profession')
+      $set.profession = profession
+    }
+
     if (dto.fullName !== undefined) $set.fullName = this.cleanStr(dto.fullName)
     if (dto.mobileNumber !== undefined) $set.mobileNumber = this.normMobile(dto.mobileNumber)
 
@@ -329,8 +372,8 @@ export class DoctorLeadService {
         $set.isVerified = true
       }
     } else {
-      if (existing.registrationNumber && existing.isVerified !== true) $set.isVerified = true
-      if (!existing.registrationNumber && existing.isVerified === true) $set.isVerified = false
+      if ((existing as any).registrationNumber && (existing as any).isVerified !== true) $set.isVerified = true
+      if (!(existing as any).registrationNumber && (existing as any).isVerified === true) $set.isVerified = false
     }
 
     if (dto.yearsOfPractice !== undefined) {
@@ -339,11 +382,15 @@ export class DoctorLeadService {
     }
 
     if (dto.qualification !== undefined) {
-      $set.qualification = Array.isArray(dto.qualification) ? dto.qualification.map((x) => this.cleanStr(x)).filter(Boolean) : []
+      $set.qualification = Array.isArray(dto.qualification)
+        ? dto.qualification.map((x) => this.cleanStr(x)).filter(Boolean)
+        : []
     }
 
     if (dto.practiceType !== undefined) {
-      $set.practiceType = Array.isArray(dto.practiceType) ? dto.practiceType.map((x) => this.cleanStr(x)).filter(Boolean) : []
+      $set.practiceType = Array.isArray(dto.practiceType)
+        ? dto.practiceType.map((x) => this.cleanStr(x)).filter(Boolean)
+        : []
     }
 
     if (dto.remarks !== undefined) $set.remarks = dto.remarks === null ? '' : this.cleanStr(dto.remarks)
@@ -359,7 +406,9 @@ export class DoctorLeadService {
 
     if ((dto as any).hasProperty !== undefined) $set.hasProperty = Boolean((dto as any).hasProperty)
     if ((dto as any).propertyValue !== undefined) $set.propertyValue = this.toNum((dto as any).propertyValue)
-    if ((dto as any).medicalEquipmentValue !== undefined) $set.medicalEquipmentValue = this.toNum((dto as any).medicalEquipmentValue)
+    if ((dto as any).medicalEquipmentValue !== undefined) {
+      $set.medicalEquipmentValue = this.toNum((dto as any).medicalEquipmentValue)
+    }
 
     if ((dto as any).cibilScore !== undefined) {
       $set.cibilScore = (dto as any).cibilScore === null ? null : this.toNum((dto as any).cibilScore)
@@ -374,7 +423,11 @@ export class DoctorLeadService {
     if (Object.keys($unset).length) updateQuery.$unset = $unset
 
     try {
-      const updated = await this.doctorLeadModel.findByIdAndUpdate(id, updateQuery, { new: true, runValidators: true }).lean()
+      const updated = await this.doctorLeadModel.findByIdAndUpdate(id, updateQuery, {
+        new: true,
+        runValidators: true,
+      }).lean()
+
       if (!updated) throw new NotFoundException('Doctor lead not found')
       return updated
     } catch (e: any) {
@@ -414,6 +467,12 @@ export class DoctorLeadService {
   }
 
   private mapRowToLead(row: BulkRow): { incoming: Partial<DoctorLead> } {
+    const profession = this.normProfession(
+      row.profession ?? row.Profession ?? row['Professional Type'],
+    )
+
+    if (!profession) throw new BadRequestException('profession missing or invalid')
+
     const fullName = this.cleanStr(row.fullName ?? row.name ?? row['Full Name'] ?? row['Name'])
     const mobileNumber = this.normMobile(row.mobileNumber ?? row.mobile ?? row['Mobile'] ?? row['Phone'])
     const cityOrPinCode = this.cleanStr(row.cityOrPinCode ?? row.city ?? row.pincode ?? row['City/Pin'])
@@ -424,12 +483,12 @@ export class DoctorLeadService {
 
     const email = this.normEmailOrUndefined(row.email ?? row['Email'])
     const reg = this.normRegNoOrUndefined(row.registrationNumber ?? row.regNo ?? row['Reg No'] ?? row['Registration Number'])
-
     const panNumber = this.normPANOrUndefined(row.panNumber ?? row.pan ?? row['PAN'] ?? row['Pan Number'])
     const aadharNumber = this.normAadharOrUndefined(row.aadharNumber ?? row.aadhar ?? row['Aadhar'] ?? row['Aadhar Number'] ?? row['AADHAR'])
 
     const yearsRaw = row.yearsOfPractice ?? row['Years Of Practice'] ?? row.experience
-    const yearsOfPractice = yearsRaw === undefined || yearsRaw === null || yearsRaw === '' ? undefined : this.toNum(yearsRaw)
+    const yearsOfPractice =
+      yearsRaw === undefined || yearsRaw === null || yearsRaw === '' ? undefined : this.toNum(yearsRaw)
 
     const qualification = this.splitMulti(row.qualification ?? row['Qualification'])
     const practiceType = this.splitMulti(row.practiceType ?? row['Practice Type'])
@@ -452,13 +511,14 @@ export class DoctorLeadService {
     const cibilScore = cibilRaw === undefined || cibilRaw === null || cibilRaw === '' ? null : this.toNum(cibilRaw)
 
     const incoming: Partial<DoctorLead> = {
+      profession,
       fullName,
       mobileNumber,
       cityOrPinCode,
       ...(email ? { email } : {}),
       ...(reg ? { registrationNumber: reg } : {}),
-      ...(panNumber ? ({ panNumber } as any) : {}),
-      ...(aadharNumber ? ({ aadharNumber } as any) : {}),
+      ...(panNumber ? { panNumber } : {}),
+      ...(aadharNumber ? { aadharNumber } : {}),
       isVerified: this.computeVerified(reg),
 
       ...(yearsOfPractice !== undefined ? { yearsOfPractice } : {}),
@@ -492,25 +552,30 @@ export class DoctorLeadService {
     let skipped = 0
     const errors: Array<{ rowIndex: number; reason: string }> = []
 
-    const seenMobile = new Set<string>()
+    const seenKeys = new Set<string>()
 
     for (let i = 0; i < rows.length; i++) {
       try {
         const { incoming } = this.mapRowToLead(rows[i])
 
-        const mob = String((incoming as any).mobileNumber || '')
-        if (seenMobile.has(mob)) {
+        const dedupeKey = `${(incoming as any).profession}__${(incoming as any).mobileNumber}`
+        if (seenKeys.has(dedupeKey)) {
           skipped++
           continue
         }
-        seenMobile.add(mob)
+        seenKeys.add(dedupeKey)
 
-        const existing = await this.doctorLeadModel.findOne({ mobileNumber: incoming.mobileNumber })
+        const existing = await this.doctorLeadModel.findOne({
+          profession: (incoming as any).profession,
+          mobileNumber: incoming.mobileNumber,
+        })
+
         if (!existing) {
           await this.doctorLeadModel.create(incoming)
           inserted++
           continue
         }
+
         skipped++
       } catch (e: any) {
         errors.push({ rowIndex: i + 2, reason: e?.message || 'Invalid row' })

@@ -1,10 +1,26 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { Document } from 'mongoose'
 
+export enum LeadProfession {
+  DOCTOR = 'DOCTOR',
+  CA = 'CA',
+  LAWYER = 'LAWYER',
+  ENGINEER = 'ENGINEER',
+}
+
 export type DoctorLeadDocument = DoctorLead & Document
 
 @Schema({ timestamps: true })
 export class DoctorLead {
+  @Prop({
+    required: true,
+    enum: LeadProfession,
+    uppercase: true,
+    trim: true,
+    index: true,
+  })
+  profession: LeadProfession
+
   @Prop({ required: true, trim: true })
   fullName: string
 
@@ -14,7 +30,7 @@ export class DoctorLead {
   @Prop({ lowercase: true, trim: true, default: undefined })
   email?: string
 
-  @Prop({ trim: true, default: undefined })
+  @Prop({ trim: true, uppercase: true, default: undefined })
   registrationNumber?: string
 
   @Prop({ trim: true, uppercase: true, default: undefined })
@@ -76,36 +92,102 @@ export class DoctorLead {
 }
 
 export const DoctorLeadSchema = SchemaFactory.createForClass(DoctorLead)
+
 DoctorLeadSchema.index(
-  { mobileNumber: 1 },
-  { unique: true, partialFilterExpression: { mobileNumber: { $type: 'string', $ne: '' } } },
+  { profession: 1, mobileNumber: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      profession: { $type: 'string', $ne: '' },
+      mobileNumber: { $type: 'string', $ne: '' },
+    },
+  },
 )
 
 DoctorLeadSchema.index(
-  { registrationNumber: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { registrationNumber: { $type: 'string', $ne: '' } } },
+  { profession: 1, registrationNumber: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: {
+      profession: { $type: 'string', $ne: '' },
+      registrationNumber: { $type: 'string', $ne: '' },
+    },
+  },
 )
 
 DoctorLeadSchema.index(
-  { panNumber: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { panNumber: { $type: 'string', $ne: '' } } },
+  { profession: 1, panNumber: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: {
+      profession: { $type: 'string', $ne: '' },
+      panNumber: { $type: 'string', $ne: '' },
+    },
+  },
 )
 
 DoctorLeadSchema.index(
-  { aadharNumber: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { aadharNumber: { $type: 'string', $ne: '' } } },
+  { profession: 1, aadharNumber: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: {
+      profession: { $type: 'string', $ne: '' },
+      aadharNumber: { $type: 'string', $ne: '' },
+    },
+  },
 )
 
 DoctorLeadSchema.index(
-  { email: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { email: { $type: 'string', $ne: '' } } },
+  { profession: 1, email: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: {
+      profession: { $type: 'string', $ne: '' },
+      email: { $type: 'string', $ne: '' },
+    },
+  },
 )
 
+DoctorLeadSchema.index({ profession: 1, createdAt: -1 })
 DoctorLeadSchema.index({ createdAt: -1 })
 
 DoctorLeadSchema.pre('save', function () {
-  const reg = (this as any).registrationNumber
-  ;(this as any).isVerified = Boolean(reg && String(reg).trim().length > 0)
+  const doc = this as any
+
+  if (doc.profession) {
+    doc.profession = String(doc.profession).trim().toUpperCase()
+  }
+
+  if (doc.registrationNumber !== undefined && doc.registrationNumber !== null) {
+    const cleanedReg = String(doc.registrationNumber).trim().toUpperCase()
+    doc.registrationNumber = cleanedReg || undefined
+  }
+
+  if (doc.panNumber !== undefined && doc.panNumber !== null) {
+    const cleanedPan = String(doc.panNumber).trim().toUpperCase()
+    doc.panNumber = cleanedPan || undefined
+  }
+
+  if (doc.email !== undefined && doc.email !== null) {
+    const cleanedEmail = String(doc.email).trim().toLowerCase()
+    doc.email = cleanedEmail || undefined
+  }
+
+  if (doc.aadharNumber !== undefined && doc.aadharNumber !== null) {
+    const cleanedAadhar = String(doc.aadharNumber).replace(/\D/g, '')
+    doc.aadharNumber = cleanedAadhar || undefined
+  }
+
+  if (doc.mobileNumber !== undefined && doc.mobileNumber !== null) {
+    doc.mobileNumber = String(doc.mobileNumber).replace(/\D/g, '')
+  }
+
+  const reg = doc.registrationNumber
+  doc.isVerified = Boolean(reg && String(reg).trim().length > 0)
 })
 
 function syncVerifiedInUpdate(this: any) {
@@ -114,6 +196,72 @@ function syncVerifiedInUpdate(this: any) {
   const $set = { ...(update.$set || {}) }
   const $unset = { ...(update.$unset || {}) }
 
+  if (update.profession !== undefined) {
+    $set.profession = String(update.profession).trim().toUpperCase()
+    delete update.profession
+  }
+
+  if ($set.profession !== undefined) {
+    $set.profession = String($set.profession).trim().toUpperCase()
+  }
+
+  if (update.mobileNumber !== undefined) {
+    $set.mobileNumber = String(update.mobileNumber).replace(/\D/g, '')
+    delete update.mobileNumber
+  }
+
+  if ($set.mobileNumber !== undefined) {
+    $set.mobileNumber = String($set.mobileNumber).replace(/\D/g, '')
+  }
+
+  if (update.email !== undefined) {
+    const cleanedEmail = String(update.email ?? '').trim().toLowerCase()
+    if (cleanedEmail) $set.email = cleanedEmail
+    else $unset.email = 1
+    delete update.email
+  }
+
+  if ($set.email !== undefined) {
+    const cleanedEmail = String($set.email ?? '').trim().toLowerCase()
+    if (cleanedEmail) $set.email = cleanedEmail
+    else {
+      delete $set.email
+      $unset.email = 1
+    }
+  }
+
+  if (update.panNumber !== undefined) {
+    const cleanedPan = String(update.panNumber ?? '').trim().toUpperCase()
+    if (cleanedPan) $set.panNumber = cleanedPan
+    else $unset.panNumber = 1
+    delete update.panNumber
+  }
+
+  if ($set.panNumber !== undefined) {
+    const cleanedPan = String($set.panNumber ?? '').trim().toUpperCase()
+    if (cleanedPan) $set.panNumber = cleanedPan
+    else {
+      delete $set.panNumber
+      $unset.panNumber = 1
+    }
+  }
+
+  if (update.aadharNumber !== undefined) {
+    const cleanedAadhar = String(update.aadharNumber ?? '').replace(/\D/g, '')
+    if (cleanedAadhar) $set.aadharNumber = cleanedAadhar
+    else $unset.aadharNumber = 1
+    delete update.aadharNumber
+  }
+
+  if ($set.aadharNumber !== undefined) {
+    const cleanedAadhar = String($set.aadharNumber ?? '').replace(/\D/g, '')
+    if (cleanedAadhar) $set.aadharNumber = cleanedAadhar
+    else {
+      delete $set.aadharNumber
+      $unset.aadharNumber = 1
+    }
+  }
+
   const regFromDirect = update.registrationNumber
   const regFromSet = $set.registrationNumber
   const regProvided = regFromSet !== undefined ? regFromSet : regFromDirect
@@ -121,7 +269,9 @@ function syncVerifiedInUpdate(this: any) {
   const regIsExplicitUnset = $unset.registrationNumber !== undefined
   const regIsCleared =
     regProvided !== undefined &&
-    (regProvided === null || regProvided === '' || (typeof regProvided === 'string' && regProvided.trim() === ''))
+    (regProvided === null ||
+      regProvided === '' ||
+      (typeof regProvided === 'string' && regProvided.trim() === ''))
 
   if (regIsExplicitUnset || regIsCleared) {
     $unset.registrationNumber = 1
