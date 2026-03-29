@@ -54,22 +54,22 @@ export class DoctorLeadService {
   }
 
   private normProfession(v: any): LeadProfession | undefined {
-    const p = this.cleanStr(v).toUpperCase()
+  const p = this.cleanStr(v).toUpperCase().replace('_', ' ')
 
-    if (!p) return undefined
-    if (p === 'DOCTOR') return LeadProfession.DOCTOR
-    if (p === 'CA' || p === 'CHARTERED ACCOUNTANT') return LeadProfession.CA
-    if (p === 'LAWYER' || p === 'ADVOCATE') return LeadProfession.LAWYER
-    if (p === 'SALARIED' || p === 'EMPLOYEE' || p === 'JOB') return LeadProfession.SALARIED
-    if (p === 'BUSINESSMAN' || p === 'BUSINESS') return LeadProfession.BUSINESSMAN
-    if (p === 'COMPANY SECRETARY' || p === 'CS') return LeadProfession.COMPANY_SECRETARY
-    if (p === 'COST ACCOUNTANT') return LeadProfession.COST_ACCOUNTANT
-    if (p === 'REALTOR') return LeadProfession.REALTOR
-    if (p === 'BROKER') return LeadProfession.BROKER
-    if (p === 'CHANNEL PARTNER') return LeadProfession.CHANNEL_PARTNER
+  if (!p) return undefined
+  if (p === 'DOCTOR') return LeadProfession.DOCTOR
+  if (p === 'CA' || p === 'CHARTERED ACCOUNTANT') return LeadProfession.CA
+  if (p === 'LAWYER' || p === 'ADVOCATE') return LeadProfession.LAWYER
+  if (p === 'SALARIED' || p === 'EMPLOYEE' || p === 'JOB') return LeadProfession.SALARIED
+  if (p === 'BUSINESSMAN' || p === 'BUSINESS') return LeadProfession.BUSINESSMAN
+  if (p === 'COMPANY SECRETARY' || p === 'CS') return LeadProfession.COMPANY_SECRETARY
+  if (p === 'COST ACCOUNTANT') return LeadProfession.COST_ACCOUNTANT
+  if (p === 'REALTOR') return LeadProfession.REALTOR
+  if (p === 'BROKER') return LeadProfession.BROKER
+  if (p === 'CHANNEL PARTNER') return LeadProfession.CHANNEL_PARTNER
 
-    return undefined
-  }
+  return undefined
+}
 
   private computeVerified(reg?: string): boolean {
     return Boolean(reg && String(reg).trim().length > 0)
