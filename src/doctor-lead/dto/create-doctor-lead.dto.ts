@@ -17,7 +17,8 @@ import { LeadProfession } from '../schemas/doctor-lead.schema'
 export class CreateDoctorLeadDto {
   @IsNotEmpty({ message: 'Profession is required' })
   @IsEnum(LeadProfession, {
-    message: 'Profession must be one of DOCTOR, CA, LAWYER, ENGINEER',
+    message:
+      'Profession must be one of DOCTOR, CA, LAWYER, SALARIED, BUSINESSMAN, COMPANY_SECRETARY, COST_ACCOUNTANT, REALTOR, BROKER, CHANNEL_PARTNER',
   })
   profession: LeadProfession
 
@@ -36,18 +37,28 @@ export class CreateDoctorLeadDto {
   cityOrPinCode: string
 
   @IsOptional()
-  @Matches(/^[A-Z0-9/-]+$/i, { message: 'Invalid registration number' })
+  @Matches(/^[A-Z0-9/-]+$/i, {
+    message: 'Invalid registration number',
+  })
   registrationNumber?: string
 
   @IsOptional()
   @IsString()
-  @Matches(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i, { message: 'Invalid PAN format' })
+  @Matches(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i, {
+    message: 'Invalid PAN format',
+  })
   panNumber?: string
 
   @IsOptional()
   @IsString()
-  @Matches(/^\s*\d{4}\s*\d{4}\s*\d{4}\s*$/, { message: 'Invalid Aadhar number' })
+  @Matches(/^\s*\d{4}\s*\d{4}\s*\d{4}\s*$/, {
+    message: 'Invalid Aadhaar number',
+  })
   aadharNumber?: string
+
+  @IsOptional()
+  @IsString()
+  passportNumber?: string
 
   @IsOptional()
   @IsEmail({}, { message: 'Invalid email address' })
@@ -133,7 +144,28 @@ export class CreateDoctorLeadDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  @Min(0)
+  @Min(300)
   @Max(900)
   cibilScore?: number | null
+
+  // CKYC fields
+  @IsOptional()
+  @IsString()
+  panFileUrl?: string
+
+  @IsOptional()
+  @IsString()
+  aadhaarFileUrl?: string
+
+  @IsOptional()
+  @IsString()
+  passportFileUrl?: string
+
+  @IsOptional()
+  @IsString()
+  photoFileUrl?: string
+
+  @IsOptional()
+  @IsString()
+  livePhotoFileUrl?: string
 }

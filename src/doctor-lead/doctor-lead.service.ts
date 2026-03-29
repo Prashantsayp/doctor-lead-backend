@@ -16,8 +16,7 @@ export class DoctorLeadService {
     @InjectModel(DoctorLead.name)
     private readonly doctorLeadModel: Model<DoctorLeadDocument>,
   ) {}
-
-  private cleanStr(v: any) {
+    private cleanStr(v: any) {
     return String(v ?? '').trim()
   }
 
@@ -61,7 +60,13 @@ export class DoctorLeadService {
     if (p === 'DOCTOR') return LeadProfession.DOCTOR
     if (p === 'CA' || p === 'CHARTERED ACCOUNTANT') return LeadProfession.CA
     if (p === 'LAWYER' || p === 'ADVOCATE') return LeadProfession.LAWYER
-    if (p === 'ENGINEER') return LeadProfession.ENGINEER
+    if (p === 'SALARIED' || p === 'EMPLOYEE' || p === 'JOB') return LeadProfession.SALARIED
+    if (p === 'BUSINESSMAN' || p === 'BUSINESS') return LeadProfession.BUSINESSMAN
+    if (p === 'COMPANY SECRETARY' || p === 'CS') return LeadProfession.COMPANY_SECRETARY
+    if (p === 'COST ACCOUNTANT') return LeadProfession.COST_ACCOUNTANT
+    if (p === 'REALTOR') return LeadProfession.REALTOR
+    if (p === 'BROKER') return LeadProfession.BROKER
+    if (p === 'CHANNEL PARTNER') return LeadProfession.CHANNEL_PARTNER
 
     return undefined
   }
@@ -161,7 +166,6 @@ export class DoctorLeadService {
     if (!fullName) throw new BadRequestException('fullName is required')
     if (!mobileNumber) throw new BadRequestException('mobileNumber is required')
     if (!cityOrPinCode) throw new BadRequestException('cityOrPinCode is required')
-
     const reg = this.normRegNoOrUndefined((dto as any).registrationNumber)
     const panNumber = this.normPANOrUndefined((dto as any).panNumber)
     const aadharNumber = this.normAadharOrUndefined((dto as any).aadharNumber)
@@ -189,7 +193,6 @@ export class DoctorLeadService {
       fullName,
       mobileNumber,
       cityOrPinCode,
-
       ...(email ? { email } : {}),
       ...(reg ? { registrationNumber: reg } : {}),
       ...(panNumber ? { panNumber } : {}),
@@ -249,21 +252,21 @@ export class DoctorLeadService {
     const filter: any = {}
 
     const profession = this.normProfession(query?.profession)
-    if (profession) {
+     if (profession) {
       filter.profession = profession
     }
-
+   
     if (rawSearch) {
       const search = this.escapeRegex(rawSearch)
       const isNum = /^\d+$/.test(rawSearch)
       const mobileOnly = rawSearch.replace(/\D/g, '')
-
-      filter.$or = [
+   filter.$or = [
         { fullName: { $regex: search, $options: 'i' } },
         { cityOrPinCode: { $regex: search, $options: 'i' } },
+        { mobileNumber: { $regex: search, $options: 'i' } },
         ...(mobileOnly ? [{ mobileNumber: { $regex: this.escapeRegex(mobileOnly), $options: 'i' } }] : []),
         ...(isNum ? [{ cibilScore: Number(rawSearch) }] : []),
-      ]
+      ]  
     }
 
     if (query?.verified !== undefined && query?.verified !== '') {
@@ -277,7 +280,6 @@ export class DoctorLeadService {
 
     return { items, page, limit, total, totalPages: Math.ceil(total / limit) }
   }
-
   async count(query?: { search?: any; verified?: any; profession?: any }) {
     const rawSearch = this.cleanStr(query?.search)
 
@@ -317,6 +319,7 @@ export class DoctorLeadService {
     return { totalDoctors, searchTotal: searchTotal ?? totalDoctors }
   }
 
+
   async findOne(id: string) {
     if (!isValidObjectId(id)) throw new BadRequestException('Invalid id')
     const lead = await this.doctorLeadModel.findById(id).lean()
@@ -324,7 +327,7 @@ export class DoctorLeadService {
     return lead
   }
 
-  async update(id: string, dto: UpdateDoctorLeadDto) {
+async update(id: string, dto: UpdateDoctorLeadDto) {
     if (!isValidObjectId(id)) throw new BadRequestException('Invalid id')
 
     const existing = await this.doctorLeadModel.findById(id).select('registrationNumber isVerified').lean()
@@ -427,10 +430,9 @@ export class DoctorLeadService {
         new: true,
         runValidators: true,
       }).lean()
-
-      if (!updated) throw new NotFoundException('Doctor lead not found')
-      return updated
-    } catch (e: any) {
+    if (!updated) throw new NotFoundException('Lead not found')
+    return updated
+  } catch (e: any) {
       if (String(e?.message || '').includes('E11000')) {
         throw new BadRequestException('Duplicate lead (unique constraint) detected')
       }
@@ -593,4 +595,109 @@ export class DoctorLeadService {
       errors: errors.slice(0, 50),
     }
   }
+
+// ================= KYC UPLOAD =================
+async uploadKyc(leadId: string, docType: string, file: Express.Multer.File) {
+  if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
+
+  const lead = await this.doctorLeadModel.findById(leadId)
+  if (!lead) throw new NotFoundException('Lead not found')
+
+  const fileUrl = `/uploads/${leadId}/${file.filename}`
+
+  await this.doctorLeadModel.updateOne(
+    { _id: leadId },
+    {
+      $set: {
+        [`kyc.${docType}.fileUrl`]: fileUrl,
+        [`kyc.${docType}.status`]: 'PENDING',
+      },
+    },
+  )
+
+  return { message: `${docType} uploaded successfully` }
+}
+
+// ================= KYC VERIFY =================
+async verifyKyc(leadId: string, docType: string) {
+  if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
+
+  await this.doctorLeadModel.updateOne(
+    { _id: leadId },
+    {
+      $set: {
+        [`kyc.${docType}.status`]: 'VERIFIED',
+        [`kyc.${docType}.verifiedAt`]: new Date(),
+      },
+    },
+  )
+
+  await this.updateCkycStatus(leadId)
+
+  return { message: `${docType} verified` }
+}
+
+// ================= KYC REJECT =================
+async rejectKyc(leadId: string, docType: string, remarks: string) {
+  if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
+
+  await this.doctorLeadModel.updateOne(
+    { _id: leadId },
+    {
+      $set: {
+        [`kyc.${docType}.status`]: 'REJECTED',
+        [`kyc.${docType}.remarks`]: remarks,
+      },
+    },
+  )
+
+  return { message: `${docType} rejected` }
+}
+
+// ================= GET KYC =================
+async getKyc(leadId: string) {
+  if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
+
+  const lead = await this.doctorLeadModel
+    .findById(leadId)
+    .select('kyc ckycStatus')
+    .lean()
+
+  if (!lead) throw new NotFoundException('Lead not found')
+
+  return lead
+}
+
+// ================= CKYC STATUS =================
+async getCkycStatus(leadId: string) {
+  if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
+
+  const lead = await this.doctorLeadModel
+    .findById(leadId)
+    .select('kyc ckycStatus')
+    .lean()
+
+  if (!lead) throw new NotFoundException('Lead not found')
+
+  return {
+    ckycStatus: lead.ckycStatus || 'CKYC_PENDING',
+    kyc: lead.kyc || {},
+  }
+}
+
+// ================= UPDATE CKYC STATUS =================
+private async updateCkycStatus(leadId: string) {
+  const lead = await this.doctorLeadModel.findById(leadId)
+
+  const panVerified = lead?.kyc?.pan?.status === 'VERIFIED'
+  const aadhaarVerified = lead?.kyc?.aadhaar?.status === 'VERIFIED'
+
+  const status =
+    panVerified && aadhaarVerified ? 'CKYC_VERIFIED' : 'CKYC_PENDING'
+
+  await this.doctorLeadModel.updateOne(
+    { _id: leadId },
+    { $set: { ckycStatus: status } },
+  )
+}
 }

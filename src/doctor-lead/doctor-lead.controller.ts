@@ -48,7 +48,7 @@ export class DoctorLeadController {
     @Query('verified') verified?: string,
     @Query('profession') profession?: string,
   ) {
-    const finalSearch = (search ?? q ?? keyword ?? queryText ?? '').toString().trim()
+    const finalSearch = (search ?? q ?? keyword ?? queryText ?? '').trim()
 
     return this.doctorLeadService.findAll({
       page,
@@ -68,7 +68,7 @@ export class DoctorLeadController {
     @Query('verified') verified?: string,
     @Query('profession') profession?: string,
   ) {
-    const finalSearch = (search ?? q ?? keyword ?? queryText ?? '').toString().trim()
+    const finalSearch = (search ?? q ?? keyword ?? queryText ?? '').trim()
 
     return this.doctorLeadService.count({
       search: finalSearch || undefined,
@@ -111,20 +111,60 @@ export class DoctorLeadController {
     return this.doctorLeadService.remove(id)
   }
 
-  @Post('bulk-sync/upload')
+  @Post('bulk-upload')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 50 * 1024 * 1024 },
       fileFilter: (req, file, cb) => {
         const name = (file.originalname || '').toLowerCase()
         const ok = name.endsWith('.csv') || name.endsWith('.xlsx')
-        if (!ok) return cb(new BadRequestException('Only .csv or .xlsx allowed'), false)
+        if (!ok)
+          return cb(new BadRequestException('Only .csv or .xlsx allowed'), false)
         cb(null, true)
       },
     }),
   )
   uploadDoctorLeads(@UploadedFile() file: Express.Multer.File) {
-    if (!file) throw new BadRequestException('File is required (field name: file)')
+    if (!file)
+      throw new BadRequestException('File is required (field name: file)')
     return this.doctorLeadService.bulkSyncFromFile(file)
+  }
+
+  @Post('kyc/upload/:leadId/:docType')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadKyc(
+    @Param('leadId') leadId: string,
+    @Param('docType') docType: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('File is required')
+    return this.doctorLeadService.uploadKyc(leadId, docType, file)
+  }
+
+  @Patch('kyc/verify/:leadId/:docType')
+  verifyKyc(
+    @Param('leadId') leadId: string,
+    @Param('docType') docType: string,
+  ) {
+    return this.doctorLeadService.verifyKyc(leadId, docType)
+  }
+
+  @Patch('kyc/reject/:leadId/:docType')
+  rejectKyc(
+    @Param('leadId') leadId: string,
+    @Param('docType') docType: string,
+    @Body('remarks') remarks: string,
+  ) {
+    return this.doctorLeadService.rejectKyc(leadId, docType, remarks)
+  }
+
+  @Get('kyc/:leadId')
+  getKyc(@Param('leadId') leadId: string) {
+    return this.doctorLeadService.getKyc(leadId)
+  }
+
+  @Get('ckyc-status/:leadId')
+  getCkycStatus(@Param('leadId') leadId: string) {
+    return this.doctorLeadService.getCkycStatus(leadId)
   }
 }
