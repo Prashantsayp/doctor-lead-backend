@@ -5,7 +5,13 @@ export enum LeadProfession {
   DOCTOR = 'DOCTOR',
   CA = 'CA',
   LAWYER = 'LAWYER',
-  ENGINEER = 'ENGINEER',
+  SALARIED = 'SALARIED',
+  BUSINESSMAN = 'BUSINESSMAN',
+  COMPANY_SECRETARY = 'COMPANY_SECRETARY',
+  COST_ACCOUNTANT = 'COST_ACCOUNTANT',
+  REALTOR = 'REALTOR',
+  BROKER = 'BROKER',
+  CHANNEL_PARTNER = 'CHANNEL_PARTNER',
 }
 
 export type DoctorLeadDocument = DoctorLead & Document
@@ -89,235 +95,53 @@ export class DoctorLead {
 
   @Prop({ type: Number, min: 0, max: 900, default: null })
   cibilScore?: number | null
+
+  // ================= CKYC SECTION =================
+
+  @Prop({
+    type: {
+      pan: {
+        number: String,
+        fileUrl: String,
+        status: { type: String, default: 'PENDING' },
+        verifiedAt: Date,
+        remarks: String,
+      },
+      aadhaar: {
+        number: String,
+        fileUrl: String,
+        status: { type: String, default: 'PENDING' },
+        verifiedAt: Date,
+        remarks: String,
+      },
+      passport: {
+        number: String,
+        fileUrl: String,
+        status: { type: String, default: 'PENDING' },
+        verifiedAt: Date,
+        remarks: String,
+      },
+      photo: {
+        fileUrl: String,
+        status: { type: String, default: 'PENDING' },
+      },
+      livePhoto: {
+        fileUrl: String,
+        status: { type: String, default: 'PENDING' },
+      },
+    },
+    default: {},
+  })
+  kyc: {
+    pan?: any
+    aadhaar?: any
+    passport?: any
+    photo?: any
+    livePhoto?: any
+  }
+
+  @Prop({ default: 'CKYC_PENDING', index: true })
+  ckycStatus: string
 }
 
 export const DoctorLeadSchema = SchemaFactory.createForClass(DoctorLead)
-
-DoctorLeadSchema.index(
-  { profession: 1, mobileNumber: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      profession: { $type: 'string', $ne: '' },
-      mobileNumber: { $type: 'string', $ne: '' },
-    },
-  },
-)
-
-DoctorLeadSchema.index(
-  { profession: 1, registrationNumber: 1 },
-  {
-    unique: true,
-    sparse: true,
-    partialFilterExpression: {
-      profession: { $type: 'string', $ne: '' },
-      registrationNumber: { $type: 'string', $ne: '' },
-    },
-  },
-)
-
-DoctorLeadSchema.index(
-  { profession: 1, panNumber: 1 },
-  {
-    unique: true,
-    sparse: true,
-    partialFilterExpression: {
-      profession: { $type: 'string', $ne: '' },
-      panNumber: { $type: 'string', $ne: '' },
-    },
-  },
-)
-
-DoctorLeadSchema.index(
-  { profession: 1, aadharNumber: 1 },
-  {
-    unique: true,
-    sparse: true,
-    partialFilterExpression: {
-      profession: { $type: 'string', $ne: '' },
-      aadharNumber: { $type: 'string', $ne: '' },
-    },
-  },
-)
-
-DoctorLeadSchema.index(
-  { profession: 1, email: 1 },
-  {
-    unique: true,
-    sparse: true,
-    partialFilterExpression: {
-      profession: { $type: 'string', $ne: '' },
-      email: { $type: 'string', $ne: '' },
-    },
-  },
-)
-
-DoctorLeadSchema.index({ profession: 1, createdAt: -1 })
-DoctorLeadSchema.index({ createdAt: -1 })
-
-DoctorLeadSchema.pre('save', function () {
-  const doc = this as any
-
-  if (doc.profession) {
-    doc.profession = String(doc.profession).trim().toUpperCase()
-  }
-
-  if (doc.registrationNumber !== undefined && doc.registrationNumber !== null) {
-    const cleanedReg = String(doc.registrationNumber).trim().toUpperCase()
-    doc.registrationNumber = cleanedReg || undefined
-  }
-
-  if (doc.panNumber !== undefined && doc.panNumber !== null) {
-    const cleanedPan = String(doc.panNumber).trim().toUpperCase()
-    doc.panNumber = cleanedPan || undefined
-  }
-
-  if (doc.email !== undefined && doc.email !== null) {
-    const cleanedEmail = String(doc.email).trim().toLowerCase()
-    doc.email = cleanedEmail || undefined
-  }
-
-  if (doc.aadharNumber !== undefined && doc.aadharNumber !== null) {
-    const cleanedAadhar = String(doc.aadharNumber).replace(/\D/g, '')
-    doc.aadharNumber = cleanedAadhar || undefined
-  }
-
-  if (doc.mobileNumber !== undefined && doc.mobileNumber !== null) {
-    doc.mobileNumber = String(doc.mobileNumber).replace(/\D/g, '')
-  }
-
-  const reg = doc.registrationNumber
-  doc.isVerified = Boolean(reg && String(reg).trim().length > 0)
-})
-
-function syncVerifiedInUpdate(this: any) {
-  const update: any = this.getUpdate() || {}
-
-  const $set = { ...(update.$set || {}) }
-  const $unset = { ...(update.$unset || {}) }
-
-  if (update.profession !== undefined) {
-    $set.profession = String(update.profession).trim().toUpperCase()
-    delete update.profession
-  }
-
-  if ($set.profession !== undefined) {
-    $set.profession = String($set.profession).trim().toUpperCase()
-  }
-
-  if (update.mobileNumber !== undefined) {
-    $set.mobileNumber = String(update.mobileNumber).replace(/\D/g, '')
-    delete update.mobileNumber
-  }
-
-  if ($set.mobileNumber !== undefined) {
-    $set.mobileNumber = String($set.mobileNumber).replace(/\D/g, '')
-  }
-
-  if (update.email !== undefined) {
-    const cleanedEmail = String(update.email ?? '').trim().toLowerCase()
-    if (cleanedEmail) $set.email = cleanedEmail
-    else $unset.email = 1
-    delete update.email
-  }
-
-  if ($set.email !== undefined) {
-    const cleanedEmail = String($set.email ?? '').trim().toLowerCase()
-    if (cleanedEmail) $set.email = cleanedEmail
-    else {
-      delete $set.email
-      $unset.email = 1
-    }
-  }
-
-  if (update.panNumber !== undefined) {
-    const cleanedPan = String(update.panNumber ?? '').trim().toUpperCase()
-    if (cleanedPan) $set.panNumber = cleanedPan
-    else $unset.panNumber = 1
-    delete update.panNumber
-  }
-
-  if ($set.panNumber !== undefined) {
-    const cleanedPan = String($set.panNumber ?? '').trim().toUpperCase()
-    if (cleanedPan) $set.panNumber = cleanedPan
-    else {
-      delete $set.panNumber
-      $unset.panNumber = 1
-    }
-  }
-
-  if (update.aadharNumber !== undefined) {
-    const cleanedAadhar = String(update.aadharNumber ?? '').replace(/\D/g, '')
-    if (cleanedAadhar) $set.aadharNumber = cleanedAadhar
-    else $unset.aadharNumber = 1
-    delete update.aadharNumber
-  }
-
-  if ($set.aadharNumber !== undefined) {
-    const cleanedAadhar = String($set.aadharNumber ?? '').replace(/\D/g, '')
-    if (cleanedAadhar) $set.aadharNumber = cleanedAadhar
-    else {
-      delete $set.aadharNumber
-      $unset.aadharNumber = 1
-    }
-  }
-
-  const regFromDirect = update.registrationNumber
-  const regFromSet = $set.registrationNumber
-  const regProvided = regFromSet !== undefined ? regFromSet : regFromDirect
-
-  const regIsExplicitUnset = $unset.registrationNumber !== undefined
-  const regIsCleared =
-    regProvided !== undefined &&
-    (regProvided === null ||
-      regProvided === '' ||
-      (typeof regProvided === 'string' && regProvided.trim() === ''))
-
-  if (regIsExplicitUnset || regIsCleared) {
-    $unset.registrationNumber = 1
-    $set.isVerified = false
-
-    delete update.registrationNumber
-    delete $set.registrationNumber
-
-    update.$set = $set
-    update.$unset = $unset
-    this.setUpdate(update)
-    return
-  }
-
-  if (regProvided !== undefined) {
-    const cleaned = String(regProvided ?? '').trim().toUpperCase()
-
-    if (!cleaned) {
-      $unset.registrationNumber = 1
-      $set.isVerified = false
-
-      delete update.registrationNumber
-      delete $set.registrationNumber
-
-      update.$set = $set
-      update.$unset = $unset
-      this.setUpdate(update)
-      return
-    }
-
-    $set.registrationNumber = cleaned
-    $set.isVerified = true
-
-    delete update.registrationNumber
-
-    update.$set = $set
-    update.$unset = $unset
-    this.setUpdate(update)
-    return
-  }
-
-  update.$set = $set
-  update.$unset = $unset
-  this.setUpdate(update)
-}
-
-DoctorLeadSchema.pre('findOneAndUpdate', syncVerifiedInUpdate)
-DoctorLeadSchema.pre('updateOne', syncVerifiedInUpdate)
-DoctorLeadSchema.pre('updateMany', syncVerifiedInUpdate)

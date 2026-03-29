@@ -9,7 +9,6 @@ import {
   Min,
   Max,
 } from 'class-validator'
-
 export class UpdateDoctorLeadDto {
   @IsOptional()
   @IsString()
@@ -46,6 +45,7 @@ export class UpdateDoctorLeadDto {
     message: 'Invalid Aadhar number',
   })
   aadharNumber?: string | null
+
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -113,9 +113,33 @@ export class UpdateDoctorLeadDto {
   @Min(0)
   medicalEquipmentValue?: number
 
-  @IsOptional()
+@IsOptional()
   @IsNumber()
   @Min(0)
   @Max(900)
   cibilScore?: number | null
+
+  @IsOptional()
+  @IsString()
+  passportNumber?: string
+
+  @IsOptional()
+  @IsString()
+  panFileUrl?: string
+
+  @IsOptional()
+  @IsString()
+  aadhaarFileUrl?: string
+
+  @IsOptional()
+  @IsString()
+  passportFileUrl?: string
+
+  @IsOptional()
+  @IsString()
+  photoFileUrl?: string
+
+  @IsOptional()
+  @IsString()
+  livePhotoFileUrl?: string
 }
