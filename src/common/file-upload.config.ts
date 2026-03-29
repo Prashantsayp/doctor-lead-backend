@@ -8,8 +8,6 @@ export const multerConfig = {
     destination: (req, file, cb) => {
       const leadId = req.params.leadId
       const uploadPath = `uploads/${leadId}`
-
-      // create folder if not exists
       fs.mkdirSync(uploadPath, { recursive: true })
 
       cb(null, uploadPath)
