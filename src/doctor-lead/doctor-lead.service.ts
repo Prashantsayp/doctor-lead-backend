@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, isValidObjectId } from 'mongoose'
+import { LeadStatus, RegVerificationStatus } from './schemas/doctor-lead.schema'
 import * as XLSX from 'xlsx'
 import { parse as csvParse } from 'csv-parse/sync'
 
@@ -9,9 +10,11 @@ import { UpdateDoctorLeadDto } from './dto/update-doctor-lead.dto'
 import { DoctorLead, DoctorLeadDocument, LeadProfession } from './schemas/doctor-lead.schema'
 
 type BulkRow = Record<string, any>
+import { s3 } from '../common/file-upload.config'
+import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 
 @Injectable()
-export class DoctorLeadService {
+  export class DoctorLeadService {
   constructor(
     @InjectModel(DoctorLead.name)
     private readonly doctorLeadModel: Model<DoctorLeadDocument>,
@@ -131,11 +134,11 @@ export class DoctorLeadService {
     const filter: any = { $or: or }
     if (profession) filter.profession = profession
 
-    const existing = await this.doctorLeadModel
-      .findOne(filter)
-      .select('_id profession fullName registrationNumber panNumber mobileNumber email aadharNumber')
-      .lean()
-
+    const existing: any = await this.doctorLeadModel
+    .findOne(filter)
+    .select('_id profession fullName registrationNumber panNumber mobileNumber email aadharNumber')
+    .lean()
+    
     if (!existing) {
       return { exists: false, matchedOn: [], leadId: null }
     }
@@ -187,18 +190,19 @@ export class DoctorLeadService {
         existingLeadId: dup.leadId,
       })
     }
+const payload: Partial<DoctorLead> = {
+  profession,
+  fullName,
+  mobileNumber,
+  cityOrPinCode,
+  ...(email ? { email } : {}),
+  ...(reg ? { registrationNumber: reg } : {}),
+  ...(panNumber ? { panNumber } : {}),
+  ...(aadharNumber ? { aadharNumber } : {}),
 
-    const payload: Partial<DoctorLead> = {
-      profession,
-      fullName,
-      mobileNumber,
-      cityOrPinCode,
-      ...(email ? { email } : {}),
-      ...(reg ? { registrationNumber: reg } : {}),
-      ...(panNumber ? { panNumber } : {}),
-      ...(aadharNumber ? { aadharNumber } : {}),
-
-      isVerified: this.computeVerified(reg),
+  isVerified: false,
+  status: LeadStatus.NEW,
+regVerificationStatus: RegVerificationStatus.PENDING,
 
       yearsOfPractice:
         dto.yearsOfPractice !== undefined && dto.yearsOfPractice !== null
@@ -328,117 +332,159 @@ export class DoctorLeadService {
   }
 
 async update(id: string, dto: UpdateDoctorLeadDto) {
-    if (!isValidObjectId(id)) throw new BadRequestException('Invalid id')
+  if (!isValidObjectId(id)) throw new BadRequestException('Invalid id')
 
-    const existing = await this.doctorLeadModel.findById(id).select('registrationNumber isVerified').lean()
-    if (!existing) throw new NotFoundException('Doctor lead not found')
+  const existing = await this.doctorLeadModel
+    .findById(id)
+    .select('registrationNumber isVerified status')
+    .lean()
 
-    const $set: any = {}
-    const $unset: any = {}
+  if (!existing) throw new NotFoundException('Doctor lead not found')
 
-    if ((dto as any).profession !== undefined) {
-      const profession = this.normProfession((dto as any).profession)
-      if (!profession) throw new BadRequestException('Invalid profession')
-      $set.profession = profession
-    }
+  const $set: any = {}
+  const $unset: any = {}
 
-    if (dto.fullName !== undefined) $set.fullName = this.cleanStr(dto.fullName)
-    if (dto.mobileNumber !== undefined) $set.mobileNumber = this.normMobile(dto.mobileNumber)
-
-    if (dto.email !== undefined) {
-      const em = this.normEmailOrUndefined(dto.email)
-      if (em) $set.email = em
-      else $unset.email = 1
-    }
-
-    if (dto.cityOrPinCode !== undefined) $set.cityOrPinCode = this.cleanStr(dto.cityOrPinCode)
-
-    if ((dto as any).panNumber !== undefined) {
-      const pan = this.normPANOrUndefined((dto as any).panNumber)
-      if (pan) $set.panNumber = pan
-      else $unset.panNumber = 1
-    }
-
-    if ((dto as any).aadharNumber !== undefined) {
-      const aad = this.normAadharOrUndefined((dto as any).aadharNumber)
-      if (aad) $set.aadharNumber = aad
-      else $unset.aadharNumber = 1
-    }
-
-    if ((dto as any).registrationNumber !== undefined) {
-      const reg = this.normRegNoOrUndefined((dto as any).registrationNumber)
-      if (!reg) {
-        $unset.registrationNumber = 1
-        $set.isVerified = false
-      } else {
-        $set.registrationNumber = reg
-        $set.isVerified = true
-      }
-    } else {
-      if ((existing as any).registrationNumber && (existing as any).isVerified !== true) $set.isVerified = true
-      if (!(existing as any).registrationNumber && (existing as any).isVerified === true) $set.isVerified = false
-    }
-
-    if (dto.yearsOfPractice !== undefined) {
-      if (dto.yearsOfPractice === null) $unset.yearsOfPractice = 1
-      else $set.yearsOfPractice = this.toNum(dto.yearsOfPractice)
-    }
-
-    if (dto.qualification !== undefined) {
-      $set.qualification = Array.isArray(dto.qualification)
-        ? dto.qualification.map((x) => this.cleanStr(x)).filter(Boolean)
-        : []
-    }
-
-    if (dto.practiceType !== undefined) {
-      $set.practiceType = Array.isArray(dto.practiceType)
-        ? dto.practiceType.map((x) => this.cleanStr(x)).filter(Boolean)
-        : []
-    }
-
-    if (dto.remarks !== undefined) $set.remarks = dto.remarks === null ? '' : this.cleanStr(dto.remarks)
-
-    if ((dto as any).monthlyGrossIncome !== undefined) $set.monthlyGrossIncome = this.toNum((dto as any).monthlyGrossIncome)
-    if ((dto as any).monthlyNetIncome !== undefined) $set.monthlyNetIncome = this.toNum((dto as any).monthlyNetIncome)
-    if ((dto as any).otherIncomeSources !== undefined) $set.otherIncomeSources = this.toNum((dto as any).otherIncomeSources)
-
-    if ((dto as any).monthlyEmi !== undefined) $set.monthlyEmi = this.toNum((dto as any).monthlyEmi)
-    if ((dto as any).activeLoans !== undefined) $set.activeLoans = this.toNum((dto as any).activeLoans)
-    if ((dto as any).loanType !== undefined) $set.loanType = this.normLoanType((dto as any).loanType)
-    if ((dto as any).hasOverdue !== undefined) $set.hasOverdue = Boolean((dto as any).hasOverdue)
-
-    if ((dto as any).hasProperty !== undefined) $set.hasProperty = Boolean((dto as any).hasProperty)
-    if ((dto as any).propertyValue !== undefined) $set.propertyValue = this.toNum((dto as any).propertyValue)
-    if ((dto as any).medicalEquipmentValue !== undefined) {
-      $set.medicalEquipmentValue = this.toNum((dto as any).medicalEquipmentValue)
-    }
-
-    if ((dto as any).cibilScore !== undefined) {
-      $set.cibilScore = (dto as any).cibilScore === null ? null : this.toNum((dto as any).cibilScore)
-    }
-
-    if (!Object.keys($set).length && !Object.keys($unset).length) {
-      throw new BadRequestException('No fields to update')
-    }
-
-    const updateQuery: any = {}
-    if (Object.keys($set).length) updateQuery.$set = $set
-    if (Object.keys($unset).length) updateQuery.$unset = $unset
-
-    try {
-      const updated = await this.doctorLeadModel.findByIdAndUpdate(id, updateQuery, {
-        new: true,
-        runValidators: true,
-      }).lean()
-    if (!updated) throw new NotFoundException('Lead not found')
-    return updated
-  } catch (e: any) {
-      if (String(e?.message || '').includes('E11000')) {
-        throw new BadRequestException('Duplicate lead (unique constraint) detected')
-      }
-      throw e
-    }
+  if ((dto as any).profession !== undefined) {
+    const profession = this.normProfession((dto as any).profession)
+    if (!profession) throw new BadRequestException('Invalid profession')
+    $set.profession = profession
   }
+
+  if (dto.fullName !== undefined) $set.fullName = this.cleanStr(dto.fullName)
+  if (dto.mobileNumber !== undefined) $set.mobileNumber = this.normMobile(dto.mobileNumber)
+
+  if (dto.email !== undefined) {
+    const em = this.normEmailOrUndefined(dto.email)
+    if (em) $set.email = em
+    else $unset.email = 1
+  }
+
+  if (dto.cityOrPinCode !== undefined) {
+    $set.cityOrPinCode = this.cleanStr(dto.cityOrPinCode)
+  }
+
+  // ===== STATUS UPDATE WITH TRANSITION CHECK =====
+  if (dto.status !== undefined) {
+    const allowedTransitions = {
+      NEW: ['APPROVED', 'REJECTED'],
+      APPROVED: ['DISBURSED'],
+      REJECTED: [],
+      DISBURSED: [],
+    }
+
+    const current = (existing as any).status
+    const next = dto.status
+
+    if (!allowedTransitions[current]?.includes(next)) {
+      throw new BadRequestException(
+        `Cannot change status from ${current} to ${next}`
+      )
+    }
+
+    $set.status = next
+  }
+
+  if ((dto as any).panNumber !== undefined) {
+    const pan = this.normPANOrUndefined((dto as any).panNumber)
+    if (pan) $set.panNumber = pan
+    else $unset.panNumber = 1
+  }
+
+  if ((dto as any).aadharNumber !== undefined) {
+    const aad = this.normAadharOrUndefined((dto as any).aadharNumber)
+    if (aad) $set.aadharNumber = aad
+    else $unset.aadharNumber = 1
+  }
+
+  if ((dto as any).registrationNumber !== undefined) {
+    const reg = this.normRegNoOrUndefined((dto as any).registrationNumber)
+    if (!reg) {
+      $unset.registrationNumber = 1
+      $set.isVerified = false
+    } else {
+      $set.registrationNumber = reg
+      $set.isVerified = true
+    }
+  } else {
+    if ((existing as any).registrationNumber && (existing as any).isVerified !== true)
+      $set.isVerified = true
+    if (!(existing as any).registrationNumber && (existing as any).isVerified === true)
+      $set.isVerified = false
+  }
+
+  if (dto.yearsOfPractice !== undefined) {
+    if (dto.yearsOfPractice === null) $unset.yearsOfPractice = 1
+    else $set.yearsOfPractice = this.toNum(dto.yearsOfPractice)
+  }
+
+  if (dto.qualification !== undefined) {
+    $set.qualification = Array.isArray(dto.qualification)
+      ? dto.qualification.map((x) => this.cleanStr(x)).filter(Boolean)
+      : []
+  }
+
+  if (dto.practiceType !== undefined) {
+    $set.practiceType = Array.isArray(dto.practiceType)
+      ? dto.practiceType.map((x) => this.cleanStr(x)).filter(Boolean)
+      : []
+  }
+
+  if (dto.remarks !== undefined) {
+    $set.remarks = dto.remarks === null ? '' : this.cleanStr(dto.remarks)
+  }
+
+  if ((dto as any).monthlyGrossIncome !== undefined)
+    $set.monthlyGrossIncome = this.toNum((dto as any).monthlyGrossIncome)
+
+  if ((dto as any).monthlyNetIncome !== undefined)
+    $set.monthlyNetIncome = this.toNum((dto as any).monthlyNetIncome)
+
+  if ((dto as any).otherIncomeSources !== undefined)
+    $set.otherIncomeSources = this.toNum((dto as any).otherIncomeSources)
+
+  if ((dto as any).monthlyEmi !== undefined)
+    $set.monthlyEmi = this.toNum((dto as any).monthlyEmi)
+
+  if ((dto as any).activeLoans !== undefined)
+    $set.activeLoans = this.toNum((dto as any).activeLoans)
+
+  if ((dto as any).loanType !== undefined)
+    $set.loanType = this.normLoanType((dto as any).loanType)
+
+  if ((dto as any).hasOverdue !== undefined)
+    $set.hasOverdue = Boolean((dto as any).hasOverdue)
+
+  if ((dto as any).hasProperty !== undefined)
+    $set.hasProperty = Boolean((dto as any).hasProperty)
+
+  if ((dto as any).propertyValue !== undefined)
+    $set.propertyValue = this.toNum((dto as any).propertyValue)
+
+  if ((dto as any).medicalEquipmentValue !== undefined)
+    $set.medicalEquipmentValue = this.toNum((dto as any).medicalEquipmentValue)
+
+  if ((dto as any).cibilScore !== undefined) {
+    $set.cibilScore =
+      (dto as any).cibilScore === null ? null : this.toNum((dto as any).cibilScore)
+  }
+
+  if (!Object.keys($set).length && !Object.keys($unset).length) {
+    throw new BadRequestException('No fields to update')
+  }
+
+  const updateQuery: any = {}
+  if (Object.keys($set).length) updateQuery.$set = $set
+  if (Object.keys($unset).length) updateQuery.$unset = $unset
+
+  const updated = await this.doctorLeadModel.findByIdAndUpdate(id, updateQuery, {
+    new: true,
+    runValidators: true,
+  }).lean()
+
+  if (!updated) throw new NotFoundException('Lead not found')
+
+  return updated
+}
 
   async remove(id: string) {
     if (!isValidObjectId(id)) throw new BadRequestException('Invalid id')
@@ -595,109 +641,201 @@ async update(id: string, dto: UpdateDoctorLeadDto) {
       errors: errors.slice(0, 50),
     }
   }
-
-// ================= KYC UPLOAD =================
 async uploadKyc(leadId: string, docType: string, file: Express.Multer.File) {
   if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
 
   const lead = await this.doctorLeadModel.findById(leadId)
   if (!lead) throw new NotFoundException('Lead not found')
 
-  const fileUrl = `/uploads/${leadId}/${file.filename}`
+  const key = `kyc/${leadId}/${Date.now()}-${file.originalname}`
 
-  await this.doctorLeadModel.updateOne(
-    { _id: leadId },
-    {
-      $set: {
-        [`kyc.${docType}.fileUrl`]: fileUrl,
-        [`kyc.${docType}.status`]: 'PENDING',
-      },
-    },
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+    }),
   )
+
+  const fileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`
+
+  await this.doctorLeadModel.findByIdAndUpdate(leadId, {
+    $set: {
+      [`kyc.${docType}.fileName`]: file.originalname,
+      [`kyc.${docType}.s3Key`]: key,
+      [`kyc.${docType}.fileUrl`]: fileUrl,
+      [`kyc.${docType}.uploadedAt`]: new Date(),
+      [`kyc.${docType}.status`]: 'UPLOADED',
+    },
+  })
 
   return { message: `${docType} uploaded successfully` }
 }
-
-// ================= KYC VERIFY =================
-async verifyKyc(leadId: string, docType: string) {
+  async verifyKyc(leadId: string, docType: string) {
   if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
 
-  await this.doctorLeadModel.updateOne(
-    { _id: leadId },
-    {
-      $set: {
-        [`kyc.${docType}.status`]: 'VERIFIED',
-        [`kyc.${docType}.verifiedAt`]: new Date(),
-      },
-    },
-  )
+  const lead = await this.doctorLeadModel.findById(leadId)
+  if (!lead) throw new NotFoundException('Lead not found')
 
-  await this.updateCkycStatus(leadId)
+  lead.kyc[docType].status = 'VERIFIED'
+  lead.kyc[docType].verifiedAt = new Date()
+
+  // auto final verification check
+  const panVerified = lead.kyc?.pan?.status === 'VERIFIED'
+  const aadharVerified = lead.kyc?.aadhar?.status === 'VERIFIED'
+  const regVerified = lead.regVerificationStatus === 'VERIFIED'
+
+  lead.isVerified = panVerified && aadharVerified && regVerified
+
+  await lead.save()
 
   return { message: `${docType} verified` }
 }
 
-// ================= KYC REJECT =================
-async rejectKyc(leadId: string, docType: string, remarks: string) {
+async verifyRegistration(leadId: string) {
   if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
 
-  await this.doctorLeadModel.updateOne(
-    { _id: leadId },
-    {
+  const lead = await this.doctorLeadModel.findById(leadId)
+  if (!lead) throw new NotFoundException('Lead not found')
+
+  lead.regVerificationStatus = RegVerificationStatus.VERIFIED
+
+  const panVerified = lead.kyc?.pan?.status === 'VERIFIED'
+  const aadharVerified = lead.kyc?.aadhar?.status === 'VERIFIED'
+  const regVerified = true
+
+  lead.isVerified = panVerified && aadharVerified && regVerified
+
+  await lead.save()
+
+  return { message: 'Registration verified successfully' }
+}
+
+async approveLead(leadId: string) {
+  return this.doctorLeadModel.findByIdAndUpdate(
+    leadId,
+    { status: 'APPROVED' },
+    { new: true },
+  )
+}
+
+async rejectLead(leadId: string) {
+  return this.doctorLeadModel.findByIdAndUpdate(
+    leadId,
+    { status: 'REJECTED' },
+    { new: true },
+  )
+}
+
+async disburseLead(leadId: string) {
+  return this.doctorLeadModel.findByIdAndUpdate(
+    leadId,
+    { status: 'DISBURSED' },
+    { new: true },
+  )
+}
+
+  async rejectKyc(leadId: string, docType: string, remarks: string) {
+    if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
+
+    await this.doctorLeadModel.findByIdAndUpdate(leadId, {
       $set: {
         [`kyc.${docType}.status`]: 'REJECTED',
         [`kyc.${docType}.remarks`]: remarks,
       },
-    },
-  )
+    })
 
-  return { message: `${docType} rejected` }
-}
-
-// ================= GET KYC =================
-async getKyc(leadId: string) {
-  if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
-
-  const lead = await this.doctorLeadModel
-    .findById(leadId)
-    .select('kyc ckycStatus')
-    .lean()
-
-  if (!lead) throw new NotFoundException('Lead not found')
-
-  return lead
-}
-
-// ================= CKYC STATUS =================
-async getCkycStatus(leadId: string) {
-  if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
-
-  const lead = await this.doctorLeadModel
-    .findById(leadId)
-    .select('kyc ckycStatus')
-    .lean()
-
-  if (!lead) throw new NotFoundException('Lead not found')
-
-  return {
-    ckycStatus: lead.ckycStatus || 'CKYC_PENDING',
-    kyc: lead.kyc || {},
+    return { message: `${docType} rejected` }
   }
-}
 
-// ================= UPDATE CKYC STATUS =================
-private async updateCkycStatus(leadId: string) {
-  const lead = await this.doctorLeadModel.findById(leadId)
+  async getKyc(leadId: string) {
+    if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
 
-  const panVerified = lead?.kyc?.pan?.status === 'VERIFIED'
-  const aadhaarVerified = lead?.kyc?.aadhaar?.status === 'VERIFIED'
+    const lead = await this.doctorLeadModel.findById(leadId)
+    if (!lead) throw new NotFoundException('Lead not found')
 
-  const status =
-    panVerified && aadhaarVerified ? 'CKYC_VERIFIED' : 'CKYC_PENDING'
+    return lead.kyc
+  }
 
-  await this.doctorLeadModel.updateOne(
-    { _id: leadId },
-    { $set: { ckycStatus: status } },
-  )
-}
+  async getCkycStatus(leadId: string) {
+    if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
+
+    const lead = await this.doctorLeadModel.findById(leadId)
+    if (!lead) throw new NotFoundException('Lead not found')
+
+    return {
+      ckycStatus: lead.ckycStatus,
+      kyc: lead.kyc,
+    }
+  }
+
+  async viewKycFile(leadId: string, docType: string, res: any) {
+    if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
+
+    const lead = await this.doctorLeadModel.findById(leadId)
+    if (!lead) throw new NotFoundException('Lead not found')
+
+    const key = lead?.kyc?.[docType]?.s3Key
+    if (!key) throw new NotFoundException('File not found')
+
+    const command = new GetObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+    })
+
+    const file = await s3.send(command)
+    const stream = file.Body as any
+    stream.pipe(res)
+  }
+
+  async downloadKycFile(leadId: string, docType: string, res: any) {
+    if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
+
+    const lead = await this.doctorLeadModel.findById(leadId)
+    if (!lead) throw new NotFoundException('Lead not found')
+
+    const key = lead?.kyc?.[docType]?.s3Key
+    const fileName = lead?.kyc?.[docType]?.fileName
+    if (!key) throw new NotFoundException('File not found')
+
+    const command = new GetObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+    })
+
+    const file = await s3.send(command)
+
+    res.set({
+      'Content-Disposition': `attachment; filename="${fileName}"`,
+    })
+
+    const stream = file.Body as any
+    stream.pipe(res)
+  }
+
+  async deleteKyc(leadId: string, docType: string) {
+    if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
+
+    const lead = await this.doctorLeadModel.findById(leadId)
+    if (!lead) throw new NotFoundException('Lead not found')
+
+    const key = lead?.kyc?.[docType]?.s3Key
+    if (!key) throw new NotFoundException('File not found')
+
+    await s3.send(
+      new DeleteObjectCommand({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: key,
+      }),
+    )
+
+    await this.doctorLeadModel.findByIdAndUpdate(leadId, {
+      $unset: {
+        [`kyc.${docType}`]: '',
+      },
+    })
+
+    return { message: `${docType} deleted successfully` }
+  }
 }

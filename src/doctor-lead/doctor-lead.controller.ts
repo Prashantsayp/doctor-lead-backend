@@ -3,24 +3,25 @@ import {
   Body,
   Controller,
   DefaultValuePipe,
-  Delete,
+  Post,
   Get,
+  Patch,
+  Delete,
   Param,
   ParseIntPipe,
-  Patch,
-  Post,
   Query,
   UploadedFile,
   UseInterceptors,
+  Res,
   UsePipes,
   ValidationPipe,
+  
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
-
+import * as multer from 'multer'
 import { DoctorLeadService } from './doctor-lead.service'
 import { CreateDoctorLeadDto } from './dto/create-doctor-lead.dto'
 import { UpdateDoctorLeadDto } from './dto/update-doctor-lead.dto'
-
 @Controller('doctor-lead')
 @UsePipes(
   new ValidationPipe({
@@ -31,6 +32,7 @@ import { UpdateDoctorLeadDto } from './dto/update-doctor-lead.dto'
 )
 export class DoctorLeadController {
   constructor(private readonly doctorLeadService: DoctorLeadService) {}
+
 
   @Post('create-lead')
   create(@Body() dto: CreateDoctorLeadDto) {
@@ -130,22 +132,22 @@ export class DoctorLeadController {
     return this.doctorLeadService.bulkSyncFromFile(file)
   }
 
-  @Post('kyc/upload/:leadId/:docType')
-  @UseInterceptors(FileInterceptor('file'))
-  uploadKyc(
-    @Param('leadId') leadId: string,
-    @Param('docType') docType: string,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    if (!file) throw new BadRequestException('File is required')
-    return this.doctorLeadService.uploadKyc(leadId, docType, file)
-  }
+ @Post('kyc/upload/:leadId/:docType')
+@UseInterceptors(
+  FileInterceptor('file', {
+    storage: multer.memoryStorage(),
+  }),
+)
+uploadKyc(
+  @Param('leadId') leadId: string,
+  @Param('docType') docType: string,
+  @UploadedFile() file: Express.Multer.File,
+) {
+  return this.doctorLeadService.uploadKyc(leadId, docType, file);
+}
 
   @Patch('kyc/verify/:leadId/:docType')
-  verifyKyc(
-    @Param('leadId') leadId: string,
-    @Param('docType') docType: string,
-  ) {
+  verifyKyc(@Param('leadId') leadId: string, @Param('docType') docType: string) {
     return this.doctorLeadService.verifyKyc(leadId, docType)
   }
 
@@ -167,4 +169,41 @@ export class DoctorLeadController {
   getCkycStatus(@Param('leadId') leadId: string) {
     return this.doctorLeadService.getCkycStatus(leadId)
   }
+
+  @Get('kyc/view/:leadId/:docType')
+  viewFile(@Param('leadId') leadId: string, @Param('docType') docType: string, @Res() res) {
+    return this.doctorLeadService.viewKycFile(leadId, docType, res)
+  }
+
+  @Get('kyc/download/:leadId/:docType')
+  downloadFile(@Param('leadId') leadId: string, @Param('docType') docType: string, @Res() res) {
+    return this.doctorLeadService.downloadKycFile(leadId, docType, res)
+  }
+
+  @Delete('kyc/:leadId/:docType')
+  deleteKyc(@Param('leadId') leadId: string, @Param('docType') docType: string) {
+    return this.doctorLeadService.deleteKyc(leadId, docType)
+  }
+
+@Patch('reg/verify/:leadId')
+verifyRegistration(@Param('leadId') leadId: string) {
+  return this.doctorLeadService.verifyRegistration(leadId)
 }
+
+@Patch('approve/:leadId')
+approveLead(@Param('leadId') leadId: string) {
+  return this.doctorLeadService.approveLead(leadId)
+}
+
+@Patch('reject/:leadId')
+rejectLead(@Param('leadId') leadId: string) {
+  return this.doctorLeadService.rejectLead(leadId)
+}
+
+@Patch('disburse/:leadId')
+disburseLead(@Param('leadId') leadId: string) {
+  return this.doctorLeadService.disburseLead(leadId)
+}
+}
+
+
