@@ -1,4 +1,4 @@
-import { S3Client } from '@aws-sdk/client-s3';
+import * as AWS from 'aws-sdk';
 import multer from 'multer';
 import multerS3 from 'multer-s3';
 import { extname } from 'path';
@@ -7,12 +7,10 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-export const s3 = new S3Client({
-  region: process.env.AWS_REGION as string,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY as string,
-    secretAccessKey: process.env.AWS_SECRET_KEY as string,
-  },
+const s3 = new AWS.S3({
+  accessKeyId: process.env.AWS_ACCESS_KEY,
+  secretAccessKey: process.env.AWS_SECRET_KEY,
+  region: process.env.AWS_REGION,
 });
 
 export const uploadToS3 = multer({
