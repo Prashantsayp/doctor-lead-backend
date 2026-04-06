@@ -14,24 +14,39 @@ export enum LeadProfession {
   CHANNEL_PARTNER = 'CHANNEL_PARTNER',
 }
 
+export enum LeadStatus {
+  NEW = 'NEW',
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  DISBURSED = 'DISBURSED',
+}
+
+export enum RegVerificationStatus {
+  PENDING = 'PENDING',
+  VERIFIED = 'VERIFIED',
+  REJECTED = 'REJECTED',
+}
+
 export type DoctorLeadDocument = DoctorLead & Document
 
 @Schema({ timestamps: true })
 export class DoctorLead {
   @Prop({
     required: true,
+    type: String,
     enum: LeadProfession,
     uppercase: true,
     trim: true,
     index: true,
   })
-  profession: LeadProfession
+  profession!: LeadProfession
 
   @Prop({ required: true, trim: true })
-  fullName: string
+ fullName!: string
 
-  @Prop({ required: true, trim: true })
-  mobileNumber: string
+  @Prop({ required: true, trim: true, index: true })
+  mobileNumber!: string
 
   @Prop({ lowercase: true, trim: true, default: undefined })
   email?: string
@@ -48,8 +63,14 @@ export class DoctorLead {
   @Prop({ type: Boolean, default: false })
   isVerified?: boolean
 
+  @Prop({ type: String, enum: LeadStatus, default: LeadStatus.NEW, index: true })
+  status!: LeadStatus
+
+  @Prop({ type: String, enum: RegVerificationStatus, default: RegVerificationStatus.PENDING })
+  regVerificationStatus!: RegVerificationStatus
+
   @Prop({ required: true, trim: true })
-  cityOrPinCode: string
+  cityOrPinCode!: string
 
   @Prop({ type: Number, min: 0 })
   yearsOfPractice?: number
@@ -96,8 +117,7 @@ export class DoctorLead {
   @Prop({ type: Number, min: 0, max: 900, default: null })
   cibilScore?: number | null
 
-  // ================= CKYC SECTION =================
-
+  // ================= CKYC =================
   @Prop({
     type: {
       pan: {
@@ -107,7 +127,7 @@ export class DoctorLead {
         verifiedAt: Date,
         remarks: String,
       },
-      aadhaar: {
+      aadhar: {
         number: String,
         fileUrl: String,
         status: { type: String, default: 'PENDING' },
@@ -132,16 +152,16 @@ export class DoctorLead {
     },
     default: {},
   })
-  kyc: {
+  kyc!: {
     pan?: any
-    aadhaar?: any
+    aadhar?: any
     passport?: any
     photo?: any
     livePhoto?: any
   }
 
   @Prop({ default: 'CKYC_PENDING', index: true })
-  ckycStatus: string
+  ckycStatus!: string
 }
 
 export const DoctorLeadSchema = SchemaFactory.createForClass(DoctorLead)

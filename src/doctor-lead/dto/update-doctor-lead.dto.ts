@@ -8,7 +8,10 @@ import {
   Matches,
   Min,
   Max,
+  IsEnum,
 } from 'class-validator'
+import { LeadStatus } from '../schemas/doctor-lead.schema'
+
 export class UpdateDoctorLeadDto {
   @IsOptional()
   @IsString()
@@ -113,7 +116,7 @@ export class UpdateDoctorLeadDto {
   @Min(0)
   medicalEquipmentValue?: number
 
-@IsOptional()
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(900)
@@ -142,4 +145,8 @@ export class UpdateDoctorLeadDto {
   @IsOptional()
   @IsString()
   livePhotoFileUrl?: string
+
+  @IsOptional()
+  @IsEnum(LeadStatus)
+  status?: LeadStatus
 }
