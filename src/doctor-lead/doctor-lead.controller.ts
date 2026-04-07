@@ -49,6 +49,8 @@ export class DoctorLeadController {
     @Query('query') queryText?: string,
     @Query('verified') verified?: string,
     @Query('profession') profession?: string,
+    @Query('status') status?: string,
+    @Query('city') city?: string,
   ) {
     const finalSearch = (search ?? q ?? keyword ?? queryText ?? '').trim()
 
@@ -175,9 +177,12 @@ uploadKyc(
     return this.doctorLeadService.viewKycFile(leadId, docType, res)
   }
 
-  @Get('kyc/download/:leadId/:docType')
-  downloadFile(@Param('leadId') leadId: string, @Param('docType') docType: string, @Res() res) {
-    return this.doctorLeadService.downloadKycFile(leadId, docType, res)
+  @Get('download-kyc/:leadId/:docType')
+  async downloadKyc(
+    @Param('leadId') leadId: string,
+    @Param('docType') docType: string,
+  ) {
+    return this.doctorLeadService.downloadKycFile(leadId, docType);
   }
 
   @Delete('kyc/:leadId/:docType')

@@ -4,6 +4,8 @@ import { Model, isValidObjectId } from 'mongoose'
 import { LeadStatus, RegVerificationStatus } from './schemas/doctor-lead.schema'
 import * as XLSX from 'xlsx'
 import { parse as csvParse } from 'csv-parse/sync'
+import {PutObjectCommand,GetObjectCommand,DeleteObjectCommand} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { CreateDoctorLeadDto } from './dto/create-doctor-lead.dto'
 import { UpdateDoctorLeadDto } from './dto/update-doctor-lead.dto'
@@ -11,7 +13,6 @@ import { DoctorLead, DoctorLeadDocument, LeadProfession } from './schemas/doctor
 
 type BulkRow = Record<string, any>
 import { s3 } from '../common/file-upload.config'
-import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 
 @Injectable()
   export class DoctorLeadService {
@@ -248,42 +249,81 @@ regVerificationStatus: RegVerificationStatus.PENDING,
     }
   }
 
-  async findAll(query?: { page?: any; limit?: any; search?: any; verified?: any; profession?: any }) {
-    const page = Math.max(1, Number(query?.page || 1))
-    const limit = Math.min(100, Math.max(1, Number(query?.limit || 20)))
-    const skip = (page - 1) * limit
-    const rawSearch = this.cleanStr(query?.search)
-    const filter: any = {}
+  async findAll(query?: { 
+  page?: any
+  limit?: any
+  search?: any
+  verified?: any
+  profession?: any
+  status?: any
+  city?: any
+}) {
+  const page = Math.max(1, Number(query?.page || 1))
+  const limit = Math.min(100, Math.max(1, Number(query?.limit || 20)))
+  const skip = (page - 1) * limit
 
-    const profession = this.normProfession(query?.profession)
-     if (profession) {
-      filter.profession = profession
-    }
-   
-    if (rawSearch) {
-      const search = this.escapeRegex(rawSearch)
-      const isNum = /^\d+$/.test(rawSearch)
-      const mobileOnly = rawSearch.replace(/\D/g, '')
-   filter.$or = [
-        { fullName: { $regex: search, $options: 'i' } },
-        { cityOrPinCode: { $regex: search, $options: 'i' } },
-        { mobileNumber: { $regex: search, $options: 'i' } },
-        ...(mobileOnly ? [{ mobileNumber: { $regex: this.escapeRegex(mobileOnly), $options: 'i' } }] : []),
-        ...(isNum ? [{ cibilScore: Number(rawSearch) }] : []),
-      ]  
-    }
+  const rawSearch = this.cleanStr(query?.search)
+  const filter: any = {}
 
-    if (query?.verified !== undefined && query?.verified !== '') {
-      filter.isVerified = String(query.verified) === 'true'
-    }
-
-    const [items, total] = await Promise.all([
-      this.doctorLeadModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      this.doctorLeadModel.countDocuments(filter),
-    ])
-
-    return { items, page, limit, total, totalPages: Math.ceil(total / limit) }
+  // ✅ profession
+  const profession = this.normProfession(query?.profession)
+  if (profession) {
+    filter.profession = profession
   }
+
+  // ✅ status (NEW ADD)
+  if (query?.status) {
+    filter.status = query.status
+  }
+
+  // ✅ city (NEW ADD)
+  if (query?.city) {
+    filter.cityOrPinCode = {
+      $regex: this.escapeRegex(query.city),
+      $options: 'i',
+    }
+  }
+
+  // ✅ search
+  if (rawSearch) {
+    const search = this.escapeRegex(rawSearch)
+    const isNum = /^\d+$/.test(rawSearch)
+    const mobileOnly = rawSearch.replace(/\D/g, '')
+
+    filter.$or = [
+      { fullName: { $regex: search, $options: 'i' } },
+      { cityOrPinCode: { $regex: search, $options: 'i' } },
+      { mobileNumber: { $regex: search, $options: 'i' } },
+      ...(mobileOnly ? [{ mobileNumber: { $regex: this.escapeRegex(mobileOnly), $options: 'i' } }] : []),
+      ...(isNum ? [{ cibilScore: Number(rawSearch) }] : []),
+    ]
+  }
+
+  // ✅ verified
+  if (query?.verified !== undefined && query?.verified !== '') {
+    filter.isVerified = String(query.verified) === 'true'
+  }
+
+  const [items, total] = await Promise.all([
+    this.doctorLeadModel
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+
+    this.doctorLeadModel.countDocuments(filter).exec(),
+  ])
+
+  return {
+    items,
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit),
+  }
+}
+
   async count(query?: { search?: any; verified?: any; profession?: any }) {
     const rawSearch = this.cleanStr(query?.search)
 
@@ -672,16 +712,21 @@ async uploadKyc(leadId: string, docType: string, file: Express.Multer.File) {
 
   return { message: `${docType} uploaded successfully` }
 }
+
   async verifyKyc(leadId: string, docType: string) {
   if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
 
   const lead = await this.doctorLeadModel.findById(leadId)
   if (!lead) throw new NotFoundException('Lead not found')
 
+  // ✅ SAFETY FIX
+  if (!lead.kyc?.[docType]) {
+    throw new BadRequestException('Invalid KYC document type')
+  }
+
   lead.kyc[docType].status = 'VERIFIED'
   lead.kyc[docType].verifiedAt = new Date()
 
-  // auto final verification check
   const panVerified = lead.kyc?.pan?.status === 'VERIFIED'
   const aadharVerified = lead.kyc?.aadhar?.status === 'VERIFIED'
   const regVerified = lead.regVerificationStatus === 'VERIFIED'
@@ -789,30 +834,23 @@ async disburseLead(leadId: string) {
     stream.pipe(res)
   }
 
-  async downloadKycFile(leadId: string, docType: string, res: any) {
-    if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
+async downloadKycFile(leadId: string, docType: string) {
+  const lead = await this.doctorLeadModel.findById(leadId);
+  if (!lead) throw new NotFoundException('Lead not found');
 
-    const lead = await this.doctorLeadModel.findById(leadId)
-    if (!lead) throw new NotFoundException('Lead not found')
+  const key = lead?.kyc?.[docType]?.s3Key;
+  if (!key) throw new NotFoundException('File not found');
 
-    const key = lead?.kyc?.[docType]?.s3Key
-    const fileName = lead?.kyc?.[docType]?.fileName
-    if (!key) throw new NotFoundException('File not found')
+  const command = new GetObjectCommand({
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: key,
+    ResponseContentDisposition: 'attachment'
+  });
 
-    const command = new GetObjectCommand({
-      Bucket: process.env.AWS_BUCKET_NAME,
-      Key: key,
-    })
+  const url = await getSignedUrl(s3, command, { expiresIn: 900 }) // 15 min
 
-    const file = await s3.send(command)
-
-    res.set({
-      'Content-Disposition': `attachment; filename="${fileName}"`,
-    })
-
-    const stream = file.Body as any
-    stream.pipe(res)
-  }
+  return { url };
+}
 
   async deleteKyc(leadId: string, docType: string) {
     if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
