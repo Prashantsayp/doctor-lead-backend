@@ -15,8 +15,8 @@ export enum LeadProfession {
 }
 
 export enum LeadStatus {
-  NEW = 'NEW',
-  PENDING = 'PENDING',
+   PENDING = 'PENDING',
+ 
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
   DISBURSED = 'DISBURSED',
@@ -63,7 +63,7 @@ export class DoctorLead {
   @Prop({ type: Boolean, default: false })
   isVerified?: boolean
 
-  @Prop({ type: String, enum: LeadStatus, default: LeadStatus.NEW, index: true })
+  @Prop({ type: String, enum: LeadStatus, default: LeadStatus.PENDING, index: true })
   status!: LeadStatus
 
   @Prop({ type: String, enum: RegVerificationStatus, default: RegVerificationStatus.PENDING })
@@ -116,6 +116,12 @@ export class DoctorLead {
 
   @Prop({ type: Number, min: 0, max: 900, default: null })
   cibilScore?: number | null
+
+  @Prop({ type: Boolean, default: false })
+  isFromOms?: boolean
+
+  @Prop({ type: Date })
+  syncedAt?: Date
 
   // ================= CKYC =================
   @Prop({
