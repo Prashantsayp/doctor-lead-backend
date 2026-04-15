@@ -6,19 +6,21 @@ import * as XLSX from 'xlsx'
 import { parse as csvParse } from 'csv-parse/sync'
 import {PutObjectCommand,GetObjectCommand,DeleteObjectCommand} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-
 import { CreateDoctorLeadDto } from './dto/create-doctor-lead.dto'
 import { UpdateDoctorLeadDto } from './dto/update-doctor-lead.dto'
 import { DoctorLead, DoctorLeadDocument, LeadProfession } from './schemas/doctor-lead.schema'
 
 type BulkRow = Record<string, any>
 import { s3 } from '../common/file-upload.config'
+import { OmsService } from 'src/oms/oms.service'
+import { mapOmsToLead } from 'src/oms/oms.mapper'
 
 @Injectable()
   export class DoctorLeadService {
   constructor(
     @InjectModel(DoctorLead.name)
     private readonly doctorLeadModel: Model<DoctorLeadDocument>,
+    private readonly omsService: OmsService,
   ) {}
     private cleanStr(v: any) {
     return String(v ?? '').trim()
@@ -56,6 +58,8 @@ import { s3 } from '../common/file-upload.config'
     const a = this.cleanStr(v).replace(/\D/g, '')
     return a ? a : undefined
   }
+
+
 
   private normProfession(v: any): LeadProfession | undefined {
   const p = this.cleanStr(v).toUpperCase().replace('_', ' ')
@@ -202,7 +206,7 @@ const payload: Partial<DoctorLead> = {
   ...(aadharNumber ? { aadharNumber } : {}),
 
   isVerified: false,
-  status: LeadStatus.NEW,
+  status: LeadStatus.PENDING,
 regVerificationStatus: RegVerificationStatus.PENDING,
 
       yearsOfPractice:
@@ -314,6 +318,21 @@ regVerificationStatus: RegVerificationStatus.PENDING,
 
     this.doctorLeadModel.countDocuments(filter).exec(),
   ])
+      
+  if (rawSearch?.trim() && items.length === 0) {
+    const fallback = await this.searchWithFallback(rawSearch)
+
+    if (fallback) {
+      return {
+        items: [fallback],
+        total: 1,
+        page: 1,
+        limit: 1,
+        totalPages: 1,
+        source: 'OMS'
+      }
+    }
+  }
 
   return {
     items,
@@ -321,6 +340,24 @@ regVerificationStatus: RegVerificationStatus.PENDING,
     limit,
     total,
     totalPages: Math.ceil(total / limit),
+    source: items.length ? 'DB' : 'NONE'
+  }
+  }
+
+async searchWithFallback(search: string) {
+
+  const omsData = await this.omsService.searchFromTickets(search)
+
+  if (!omsData) return null
+
+  return {
+    fullName: omsData.fullName,
+    mobileNumber: omsData.mobileNumber,
+    cityOrPinCode: omsData.cityOrPinCode || "NA",
+    loanAmount: omsData.loanAmount || 0,
+    status: omsData.status || "PENDING",
+    isFromOms: true,
+    syncedAt: new Date(),
   }
 }
 
@@ -403,26 +440,26 @@ async update(id: string, dto: UpdateDoctorLeadDto) {
     $set.cityOrPinCode = this.cleanStr(dto.cityOrPinCode)
   }
 
-  // ===== STATUS UPDATE WITH TRANSITION CHECK =====
-  if (dto.status !== undefined) {
-    const allowedTransitions = {
-      NEW: ['APPROVED', 'REJECTED'],
-      APPROVED: ['DISBURSED'],
-      REJECTED: [],
-      DISBURSED: [],
-    }
-
-    const current = (existing as any).status
-    const next = dto.status
-
-    if (!allowedTransitions[current]?.includes(next)) {
-      throw new BadRequestException(
-        `Cannot change status from ${current} to ${next}`
-      )
-    }
-
-    $set.status = next
+ if (dto.status !== undefined) {
+  const allowedTransitions = {
+    PENDING: ['APPROVED', 'REJECTED'],
+    APPROVED: ['DISBURSED'],
+    REJECTED: [],
+    DISBURSED: [],
   }
+
+  const current = (existing as any).status
+  const next = dto.status
+
+  if (!allowedTransitions[current]?.includes(next)) {
+    throw new BadRequestException(
+      `Cannot change status from ${current} to ${next}`
+    )
+  }
+
+  $set.status = next
+}
+
 
   if ((dto as any).panNumber !== undefined) {
     const pan = this.normPANOrUndefined((dto as any).panNumber)
@@ -758,27 +795,54 @@ async verifyRegistration(leadId: string) {
 }
 
 async approveLead(leadId: string) {
-  return this.doctorLeadModel.findByIdAndUpdate(
-    leadId,
-    { status: 'APPROVED' },
-    { new: true },
-  )
+  const lead = await this.doctorLeadModel.findById(leadId)
+
+  if (!lead) throw new NotFoundException('Lead not found')
+
+  if (lead.status !== 'PENDING') {
+    throw new BadRequestException('Only PENDING leads can be approved')
+  }
+
+  lead.status = LeadStatus.APPROVED
+  await lead.save()
+
+  return lead
 }
 
 async rejectLead(leadId: string) {
-  return this.doctorLeadModel.findByIdAndUpdate(
-    leadId,
-    { status: 'REJECTED' },
-    { new: true },
-  )
+  const lead = await this.doctorLeadModel.findById(leadId)
+
+  if (!lead) throw new NotFoundException('Lead not found')
+
+  // ❌ only PENDING can be rejected
+  if (lead.status !== LeadStatus.PENDING) {
+    throw new BadRequestException(
+      `Cannot reject lead with status ${lead.status}`
+    )
+  }
+
+  lead.status = LeadStatus.REJECTED
+  await lead.save()
+
+  return lead
 }
 
 async disburseLead(leadId: string) {
-  return this.doctorLeadModel.findByIdAndUpdate(
-    leadId,
-    { status: 'DISBURSED' },
-    { new: true },
-  )
+  const lead = await this.doctorLeadModel.findById(leadId)
+
+  if (!lead) throw new NotFoundException('Lead not found')
+
+  // ❌ only APPROVED can be disbursed
+  if (lead.status !== LeadStatus.APPROVED) {
+    throw new BadRequestException(
+      `Only APPROVED leads can be disbursed`
+    )
+  }
+
+  lead.status = LeadStatus.DISBURSED
+  await lead.save()
+
+  return lead
 }
 
   async rejectKyc(leadId: string, docType: string, remarks: string) {

@@ -105,7 +105,7 @@ export class DoctorLeadController {
     return this.doctorLeadService.findOne(id)
   }
 
-  @Patch(':id')
+  @Patch('update/:id')
   update(@Param('id') id: string, @Body() dto: UpdateDoctorLeadDto) {
     return this.doctorLeadService.update(id, dto)
   }
@@ -133,6 +133,14 @@ export class DoctorLeadController {
       throw new BadRequestException('File is required (field name: file)')
     return this.doctorLeadService.bulkSyncFromFile(file)
   }
+
+  @Patch(':id')
+updateLead(
+  @Param('id') id: string,
+  @Body() dto: UpdateDoctorLeadDto,
+) {
+  return this.doctorLeadService.update(id, dto)
+}
 
  @Post('kyc/upload/:leadId/:docType')
 @UseInterceptors(
@@ -178,11 +186,11 @@ uploadKyc(
   }
 
   @Get('download-kyc/:leadId/:docType')
-  async downloadKyc(
+  downloadKyc(
     @Param('leadId') leadId: string,
     @Param('docType') docType: string,
   ) {
-    return this.doctorLeadService.downloadKycFile(leadId, docType);
+    return this.doctorLeadService.downloadKycFile(leadId, docType)
   }
 
   @Delete('kyc/:leadId/:docType')
