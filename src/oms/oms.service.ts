@@ -14,6 +14,7 @@ export class OmsService {
             "x-access-token": process.env.OMS_TOKEN,
             "x-company-id": process.env.OMS_COMPANY_ID,
           },
+          timeout: 5000,
         }
       )
 
@@ -24,41 +25,59 @@ export class OmsService {
     }
   }
 
+  private normalizeText(val: string) {
+    return (val || "").toString().toLowerCase().trim()
+  }
+
+  private normalizeNumber(val: string) {
+    return (val || "").toString().replace(/\D/g, '')
+  }
+
   async searchFromTickets(search: string) {
     try {
-      const tickets = await this.getOmsTickets(1, 100)
+      const cleanText = this.normalizeText(search)
+      const cleanNumber = this.normalizeNumber(search)
 
-      const normalize = (val: string) =>
-        (val || "").toString().toLowerCase().replace(/\s/g, '')
+      for (let page = 1; page <= 5; page++) {
+        const tickets = await this.getOmsTickets(page, 100)
 
-      const cleanSearch = normalize(search)
 
-      const matched = tickets.find((t: any) => {
-        const mobile = normalize(t.customerContact)
-        const email = normalize(t.customerEmail)
-        const name = normalize(t.customerName)
+        const matched = tickets.find((t: any) => {
+          const mobile = this.normalizeNumber(t.customerContact)
+          const email = this.normalizeText(t.customerEmail)
+          const name = this.normalizeText(t.customerName)
+          const pan = this.normalizeText(t.panNumber)
 
-        return (
-          mobile.includes(cleanSearch) ||
-          email.includes(cleanSearch) ||
-          name.includes(cleanSearch)
-        )
-      })
-      
-      if (!matched) return null
+          return (
+            mobile.includes(cleanNumber) ||
+            email.includes(cleanText) ||
+            name.includes(cleanText) ||
+            pan.includes(cleanText)
+          )
+        })
 
-      return {
-        fullName: matched.customerName,
-        mobileNumber: matched.customerContact,
-        email: matched.customerEmail,
-        cityOrPinCode: matched.customerLocation,
-        loanAmount: Number(matched.applicationAmount) || 0,
-        status: matched.ticketStatus,
-        isFromOms: true,
+        if (matched) {
+
+          return {
+            fullName: matched.customerName || "NA",
+            mobileNumber: matched.customerContact || "NA",
+            email: matched.customerEmail || null,
+            cityOrPinCode: matched.customerLocation || "NA",
+            loanAmount: Number(matched.applicationAmount) || 0,
+            status: matched.ticketStatus || "PENDING",
+            pan: matched.panNumber || null,
+            cibil: matched.cibilScore || null,
+
+            profession: matched.profession || matched.customerType || null,
+
+            isFromOms: true,
+          }
+        }
       }
 
+      return null
+
     } catch (err) {
-      console.error("OMS SEARCH ERROR:", err)
       return null
     }
   }
