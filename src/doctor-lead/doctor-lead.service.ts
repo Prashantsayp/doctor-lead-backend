@@ -350,6 +350,30 @@ async searchWithFallback(search: string) {
 
   if (!omsData) return null
 
+  const existing = await this.doctorLeadModel.findOne({
+    mobileNumber: omsData.mobileNumber
+  })
+
+  if (!existing) {
+
+    const mappedProfession = this.normProfession(omsData.profession)
+
+await this.doctorLeadModel.create({
+  profession: mappedProfession || LeadProfession.DOCTOR,
+  fullName: omsData.fullName,
+  mobileNumber: omsData.mobileNumber,
+  email: omsData.email,
+  cityOrPinCode: omsData.cityOrPinCode || "NA",
+
+  isFromOms: true,
+  syncedAt: new Date(),
+})
+
+  } else {
+    console.log("⚠️ ALREADY EXISTS, NOT SAVING")
+  }
+
+  // 🔥 STEP 2: return for UI
   return {
     fullName: omsData.fullName,
     mobileNumber: omsData.mobileNumber,
