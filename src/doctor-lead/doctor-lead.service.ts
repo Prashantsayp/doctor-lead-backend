@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
+import { Cron } from '@nestjs/schedule'
 import { Model, isValidObjectId } from 'mongoose'
 import { LeadStatus, RegVerificationStatus } from './schemas/doctor-lead.schema'
 import * as XLSX from 'xlsx'
@@ -344,44 +345,123 @@ regVerificationStatus: RegVerificationStatus.PENDING,
   }
   }
 
+  private mapOmsStatus(status: string) {
+  const s = (status || "").toLowerCase()
+
+  if (s.includes("approved")) return LeadStatus.APPROVED
+  if (s.includes("reject")) return LeadStatus.REJECTED
+  if (s.includes("disbursed")) return LeadStatus.DISBURSED
+
+  return LeadStatus.PENDING
+}
+
 async searchWithFallback(search: string) {
 
   const omsData = await this.omsService.searchFromTickets(search)
 
   if (!omsData) return null
 
+  // 🔥 normalize values
+  const mobile = this.normMobile(omsData.mobileNumber)
+  const email = this.normEmailOrUndefined(omsData.email)
+  const pan = this.normPANOrUndefined(omsData.pan)
+
+  // 🔥 strong duplicate check (mobile + email + PAN)
   const existing = await this.doctorLeadModel.findOne({
-    mobileNumber: omsData.mobileNumber
+    $or: [
+      { mobileNumber: mobile },
+      ...(email ? [{ email }] : []),
+      ...(pan ? [{ panNumber: pan }] : []),
+    ]
   })
 
   if (!existing) {
 
     const mappedProfession = this.normProfession(omsData.profession)
 
-await this.doctorLeadModel.create({
-  profession: mappedProfession || LeadProfession.DOCTOR,
-  fullName: omsData.fullName,
-  mobileNumber: omsData.mobileNumber,
-  email: omsData.email,
-  cityOrPinCode: omsData.cityOrPinCode || "NA",
+    await this.doctorLeadModel.create({
+      profession: mappedProfession || LeadProfession.DOCTOR,
+      fullName: omsData.fullName || "NA",
+      mobileNumber: mobile,
+      ...(email ? { email } : {}),
+      ...(pan ? { panNumber: pan } : {}),
+      cityOrPinCode: omsData.cityOrPinCode || "NA",
 
-  isFromOms: true,
-  syncedAt: new Date(),
-})
+      status: this.mapOmsStatus(omsData.status),
+
+      isFromOms: true,
+      syncedAt: new Date(),
+    })
 
   } else {
     console.log("⚠️ ALREADY EXISTS, NOT SAVING")
   }
 
-  // 🔥 STEP 2: return for UI
+  // 🔥 return for UI (always OMS data, not DB)
   return {
     fullName: omsData.fullName,
-    mobileNumber: omsData.mobileNumber,
+    mobileNumber: mobile,
     cityOrPinCode: omsData.cityOrPinCode || "NA",
     loanAmount: omsData.loanAmount || 0,
     status: omsData.status || "PENDING",
     isFromOms: true,
     syncedAt: new Date(),
+  }
+}
+
+
+@Cron('*/10 * * * *')
+async syncOmsToDb() {
+  console.log("🔄 OMS SYNC START")
+
+  try {
+    const tickets = await this.omsService.getOmsTickets(1, 200)
+
+    for (const t of tickets) {
+
+      const mobile = this.normMobile(t.customerContact)
+      if (!mobile) continue
+
+      // ✅ NEW LINE (ADD THIS)
+      const email = this.normEmailOrUndefined(t.customerEmail)
+      const pan = this.normPANOrUndefined(t.panNumber)
+
+      // ❌ OLD CODE NAHI HAI (GOOD)
+      // 👉 yaha new duplicate check lagega
+
+      const exists = await this.doctorLeadModel.findOne({
+        $or: [
+          { mobileNumber: mobile },
+          ...(email ? [{ email }] : []),
+          ...(pan ? [{ panNumber: pan }] : []),
+        ]
+      })
+
+      if (exists) continue
+
+      const mappedProfession = this.normProfession(
+        t.profession || t.customerType
+      )
+
+      await this.doctorLeadModel.create({
+        profession: mappedProfession || LeadProfession.DOCTOR,
+        fullName: t.customerName || "NA",
+        mobileNumber: mobile,
+        email,
+        ...(pan ? { panNumber: pan } : {}),
+        cityOrPinCode: t.customerLocation || "NA",
+
+        status: this.mapOmsStatus(t.ticketStatus),
+
+        isFromOms: true,
+        syncedAt: new Date(),
+      })
+    }
+
+    console.log("✅ OMS SYNC DONE")
+
+  } catch (err) {
+    console.error("❌ OMS SYNC ERROR:", err.message)
   }
 }
 
