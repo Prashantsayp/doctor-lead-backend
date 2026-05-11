@@ -155,6 +155,21 @@ export class DoctorLead {
         fileUrl: String,
         status: { type: String, default: 'PENDING' },
       },
+      bankStatement: {
+      fileUrl: String,
+      status: { type: String, default: 'PENDING' },
+      verifiedAt: Date,
+      remarks: String,
+    },
+
+    cibil: {
+      fileUrl: String,
+      status: { type: String, default: 'PENDING' },
+      verifiedAt: Date,
+      remarks: String,
+      score: Number,
+    },
+
     },
     default: {},
   })
@@ -164,10 +179,15 @@ export class DoctorLead {
     passport?: any
     photo?: any
     livePhoto?: any
+    bankStatement?: any
+    cibil?: any
   }
 
   @Prop({ default: 'CKYC_PENDING', index: true })
   ckycStatus!: string
+
+  @Prop({ type: Number, min: 0, default: 0 })
+requestedLoanAmount?: number
 }
 
 export const DoctorLeadSchema = SchemaFactory.createForClass(DoctorLead)

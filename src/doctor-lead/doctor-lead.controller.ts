@@ -1,10 +1,8 @@
 import {
   BadRequestException,
   Body,
-  Controller,
   DefaultValuePipe,
   Post,
-  Get,
   Patch,
   Delete,
   Param,
@@ -22,16 +20,23 @@ import * as multer from 'multer'
 import { DoctorLeadService } from './doctor-lead.service'
 import { CreateDoctorLeadDto } from './dto/create-doctor-lead.dto'
 import { UpdateDoctorLeadDto } from './dto/update-doctor-lead.dto'
+import { Controller, Get } from '@nestjs/common';
+import { OmsService } from 'src/oms/oms.service';
+
+import { PolicyUploadService } from 'src/policy-upload/policy-upload.service'
 @Controller('doctor-lead')
 @UsePipes(
   new ValidationPipe({
     whitelist: true,
     transform: true,
-    forbidNonWhitelisted: false,
   }),
 )
 export class DoctorLeadController {
-  constructor(private readonly doctorLeadService: DoctorLeadService) {}
+  constructor(
+    private readonly doctorLeadService: DoctorLeadService,
+    private readonly omsService: OmsService,
+    private readonly policyUploadService: PolicyUploadService,
+  ) {}
 
 
   @Post('create-lead')
@@ -81,6 +86,7 @@ export class DoctorLeadController {
     })
   }
 
+  
   @Get('exists')
   exists(
     @Query('profession') profession?: string,
@@ -217,6 +223,34 @@ rejectLead(@Param('leadId') leadId: string) {
 disburseLead(@Param('leadId') leadId: string) {
   return this.doctorLeadService.disburseLead(leadId)
 }
+
+
+  @Get('oms-count')
+  async getOmsCount() {
+    const count = await this.omsService.getOmsCount();
+    return { count };
+  }
+
+
+@Get(':id/eligibility')
+checkEligibility(@Param('id') id: string) {
+  return this.doctorLeadService.checkEligibility(id);
 }
 
+@Post('upload-financial/:leadId/:type')
+@UseInterceptors(FileInterceptor('file'))
+uploadFinancial(
+  @Param('leadId') leadId: string,
+  @Param('type') type: 'bankStatement' | 'cibil',
+  @UploadedFile() file: Express.Multer.File,
+  @Body('password') password?: string,
+) {
+  return this.policyUploadService.processFinancialFile(
+    leadId,
+    file,
+    type,
+    password,
+  );
+}
+}
 

@@ -10,22 +10,28 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { CreateDoctorLeadDto } from './dto/create-doctor-lead.dto'
 import { UpdateDoctorLeadDto } from './dto/update-doctor-lead.dto'
 import { DoctorLead, DoctorLeadDocument, LeadProfession } from './schemas/doctor-lead.schema'
+import { OmsService } from 'src/oms/oms.service';
+import { LenderPolicy, LenderPolicyDocument } from '../lender-policy/schema/lender-policy-schema';
 
 type BulkRow = Record<string, any>
 import { s3 } from '../common/file-upload.config'
-import { OmsService } from 'src/oms/oms.service'
 import { mapOmsToLead } from 'src/oms/oms.mapper'
 
 @Injectable()
   export class DoctorLeadService {
   constructor(
-    @InjectModel(DoctorLead.name)
-    private readonly doctorLeadModel: Model<DoctorLeadDocument>,
-    private readonly omsService: OmsService,
-  ) {}
-    private cleanStr(v: any) {
-    return String(v ?? '').trim()
-  }
+  @InjectModel(DoctorLead.name)
+  private readonly doctorLeadModel: Model<DoctorLeadDocument>,
+
+  private readonly omsService: OmsService,
+  
+  @InjectModel(LenderPolicy.name)
+  private readonly lenderPolicyModel: Model<LenderPolicyDocument>,
+) {}
+
+  private cleanStr(v: any) {
+  return String(v ?? '').trim();
+}
 
   private escapeRegex(input: string) {
     return String(input ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -270,18 +276,15 @@ regVerificationStatus: RegVerificationStatus.PENDING,
   const rawSearch = this.cleanStr(query?.search)
   const filter: any = {}
 
-  // ✅ profession
   const profession = this.normProfession(query?.profession)
   if (profession) {
     filter.profession = profession
   }
 
-  // ✅ status (NEW ADD)
   if (query?.status) {
     filter.status = query.status
   }
 
-  // ✅ city (NEW ADD)
   if (query?.city) {
     filter.cityOrPinCode = {
       $regex: this.escapeRegex(query.city),
@@ -289,7 +292,6 @@ regVerificationStatus: RegVerificationStatus.PENDING,
     }
   }
 
-  // ✅ search
   if (rawSearch) {
     const search = this.escapeRegex(rawSearch)
     const isNum = /^\d+$/.test(rawSearch)
@@ -304,7 +306,6 @@ regVerificationStatus: RegVerificationStatus.PENDING,
     ]
   }
 
-  // ✅ verified
   if (query?.verified !== undefined && query?.verified !== '') {
     filter.isVerified = String(query.verified) === 'true'
   }
@@ -366,7 +367,6 @@ async searchWithFallback(search: string) {
   const email = this.normEmailOrUndefined(omsData.email)
   const pan = this.normPANOrUndefined(omsData.pan)
 
-  // 🔥 strong duplicate check (mobile + email + PAN)
   const existing = await this.doctorLeadModel.findOne({
     $or: [
       { mobileNumber: mobile },
@@ -394,10 +394,8 @@ async searchWithFallback(search: string) {
     })
 
   } else {
-    console.log("⚠️ ALREADY EXISTS, NOT SAVING")
   }
 
-  // 🔥 return for UI (always OMS data, not DB)
   return {
     fullName: omsData.fullName,
     mobileNumber: mobile,
@@ -412,7 +410,6 @@ async searchWithFallback(search: string) {
 
 @Cron('*/10 * * * *')
 async syncOmsToDb() {
-  console.log("🔄 OMS SYNC START")
 
   try {
     const tickets = await this.omsService.getOmsTickets(1, 200)
@@ -422,12 +419,9 @@ async syncOmsToDb() {
       const mobile = this.normMobile(t.customerContact)
       if (!mobile) continue
 
-      // ✅ NEW LINE (ADD THIS)
       const email = this.normEmailOrUndefined(t.customerEmail)
       const pan = this.normPANOrUndefined(t.panNumber)
 
-      // ❌ OLD CODE NAHI HAI (GOOD)
-      // 👉 yaha new duplicate check lagega
 
       const exists = await this.doctorLeadModel.findOne({
         $or: [
@@ -458,10 +452,8 @@ async syncOmsToDb() {
       })
     }
 
-    console.log("✅ OMS SYNC DONE")
 
   } catch (err) {
-    console.error("❌ OMS SYNC ERROR:", err.message)
   }
 }
 
@@ -860,7 +852,6 @@ async uploadKyc(leadId: string, docType: string, file: Express.Multer.File) {
   const lead = await this.doctorLeadModel.findById(leadId)
   if (!lead) throw new NotFoundException('Lead not found')
 
-  // ✅ SAFETY FIX
   if (!lead.kyc?.[docType]) {
     throw new BadRequestException('Invalid KYC document type')
   }
@@ -918,7 +909,6 @@ async rejectLead(leadId: string) {
 
   if (!lead) throw new NotFoundException('Lead not found')
 
-  // ❌ only PENDING can be rejected
   if (lead.status !== LeadStatus.PENDING) {
     throw new BadRequestException(
       `Cannot reject lead with status ${lead.status}`
@@ -936,7 +926,6 @@ async disburseLead(leadId: string) {
 
   if (!lead) throw new NotFoundException('Lead not found')
 
-  // ❌ only APPROVED can be disbursed
   if (lead.status !== LeadStatus.APPROVED) {
     throw new BadRequestException(
       `Only APPROVED leads can be disbursed`
@@ -970,6 +959,10 @@ async disburseLead(leadId: string) {
 
     return lead.kyc
   }
+
+  async getDbCount(): Promise<number> {
+  return this.doctorLeadModel.countDocuments();
+}
 
   async getCkycStatus(leadId: string) {
     if (!isValidObjectId(leadId)) throw new BadRequestException('Invalid leadId')
@@ -1044,4 +1037,68 @@ async downloadKycFile(leadId: string, docType: string) {
 
     return { message: `${docType} deleted successfully` }
   }
+
+async checkEligibility(leadId: string) {
+  const lead = await this.doctorLeadModel.findById(leadId).lean();
+
+  if (!lead) {
+    throw new NotFoundException('Lead not found');
+  }
+
+  const policies = await this.lenderPolicyModel
+    .find({ isActive: true })
+    .populate('lenderId', 'name')
+    .lean();
+
+  const results: any[] = [];
+
+  for (const policy of policies) {
+    const reasons: string[] = [];
+
+    const cibil = lead.cibilScore || 0;
+    const income = lead.monthlyNetIncome || 0;
+    const employment = (lead.profession || '').toLowerCase();
+    const loanAmount = lead.requestedLoanAmount || 0;
+
+    if (cibil < policy.minCibil) reasons.push('Low CIBIL');
+    if (income < policy.minIncome) reasons.push('Low Income');
+
+    if (
+      policy.employmentTypes?.length &&
+      !policy.employmentTypes.includes(employment)
+    ) {
+      reasons.push('Employment not allowed');
+    }
+
+    if (loanAmount && loanAmount > policy.maxLoanAmount) {
+      reasons.push('Loan too high');
+    }
+
+    let score = 0;
+    if (cibil >= policy.minCibil) score += 30;
+    if (income >= policy.minIncome) score += 30;
+    if (policy.employmentTypes?.includes(employment)) score += 20;
+    if (!loanAmount || loanAmount <= policy.maxLoanAmount) score += 20;
+
+    const lender: any = policy.lenderId;
+
+    results.push({
+      lenderId: lender?._id,
+      lenderName: lender?.name || 'UNKNOWN',
+      eligible: reasons.length === 0,
+      score,
+      reasons,
+    });
+  }
+
+  const sorted = results.sort((a, b) => b.score - a.score);
+  const eligibleList = sorted.filter((r) => r.eligible);
+
+  return {
+    leadId,
+    finalEligible: eligibleList.length > 0,
+    bestLender: eligibleList[0]?.lenderName || null,
+    results: sorted,
+  };
 }
+  }

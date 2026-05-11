@@ -10,7 +10,6 @@ dotenv.config()
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule)
 
-  // ✅ CORS (single config only)
   app.enableCors({
     origin: [
       'https://doctor-lead.netlify.app',
@@ -21,7 +20,6 @@ async function bootstrap() {
     credentials: true,
   })
 
-  // ✅ Validation
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
