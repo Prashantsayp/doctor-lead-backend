@@ -54,3 +54,21 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# OCR PDFs
+*.pdf
+
+# OCR output
+ocr-*.pdf
+
+# Google Vision
+google-vision.json
+
+# uploads
+uploads/
+
+# temp
+temp/
+
+# node
+node_modules
