@@ -12,7 +12,9 @@ export class LenderPolicyService {
   async create(dto: any) {
     try {
       const cleanData = {
+
         lenderId: dto.lenderId,
+        lenderName: dto.lenderName,
         minCibil: dto.minCibil,
         minIncome: dto.minIncome,
         maxLoanAmount: dto.maxLoanAmount,

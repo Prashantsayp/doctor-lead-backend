@@ -14,6 +14,8 @@ import { LenderPolicyModule } from './lender-policy/lender-policy.module';
 import { OcrModule } from './ocr/ocr.module';
 import { AiModule } from './ai/ai.module';
 import { PolicyUploadModule } from './policy-upload/policy-upload.module';
+import { EligibilityModule } from './eligibility/eligibility.module';
+import e from 'express'
 
 @Module({
   imports: [
@@ -41,6 +43,7 @@ import { PolicyUploadModule } from './policy-upload/policy-upload.module';
     OcrModule,
     AiModule,
     PolicyUploadModule,
+    EligibilityModule,
   ],
 
   controllers: [AppController],

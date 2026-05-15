@@ -15,12 +15,12 @@ import { UpdateLenderPolicyDto } from './dto/update-lender-policy.dto';
 export class LenderPolicyController {
   constructor(private readonly service: LenderPolicyService) {}
 
-  @Post()
+  @Post('create-policy')
   async create(@Body() dto: CreateLenderPolicyDto) {
     return await this.service.create(dto);
   }
 
-  @Get()
+  @Get('all-policies')
   async findAll() {
     return await this.service.findAll();
   }

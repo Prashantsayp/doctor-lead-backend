@@ -16,6 +16,10 @@ export class CreateLenderPolicyDto {
   lenderId: string;
 
   @IsNotEmpty()
+  @IsString()
+  lenderName: string;
+
+  @IsNotEmpty()
   @Type(() => Number)
   @IsNumber()
   @Min(300)

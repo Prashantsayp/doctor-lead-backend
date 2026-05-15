@@ -1,8 +1,13 @@
-import { Module } from '@nestjs/common';
-import { OcrService } from './ocr.service';
 
+import { Module } from '@nestjs/common';
+import { OcrController } from './ocr.controller';
+import { OcrService } from './ocr.service';
+import { DocumentParserService } from './document-parser.service';
+ 
 @Module({
-  providers: [OcrService],
-  exports: [OcrService],
+  controllers: [OcrController],
+  providers: [OcrService, DocumentParserService],
+  exports: [OcrService, DocumentParserService],
 })
 export class OcrModule {}
+ 
