@@ -5,15 +5,14 @@ import { MatchLenderDto } from './dto/match-lender.dto';
 
 @Controller('lender')
 export class LenderController {
-
   constructor(private readonly lenderService: LenderService) {}
 
-  @Post()
+  @Post('create')
   create(@Body() body: CreateLenderDto) {
     return this.lenderService.create(body);
   }
 
-  @Get()
+  @Get('get-all')
   getAll() {
     return this.lenderService.getAll();
   }
