@@ -8,29 +8,68 @@ import * as dotenv from 'dotenv'
 dotenv.config()
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule)
+  const app =
+    await NestFactory.create<NestExpressApplication>(AppModule)
+
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+
+    'https://doctor-lead.netlify.app',
+    'https://www.doctor-lead.netlify.app',
+
+  ]
 
   app.enableCors({
-    origin: [
-      'https://doctor-lead.netlify.app',
-      'http://localhost:3000',
-    ],
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
-  })
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true)
+      }
 
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true)
+      } else {
+        console.error(`❌ CORS Blocked Origin: ${origin}`)
+        callback(new Error('Not allowed by CORS'))
+      }
+    },
+
+    credentials: true,
+
+    methods: [
+      'GET',
+      'POST',
+      'PUT',
+      'PATCH',
+      'DELETE',
+      'OPTIONS',
+    ],
+
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+    ],
+  })
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
+      forbidNonWhitelisted: true,
     }),
   )
 
-  const config = app.get(ConfigService)
-  const port = Number(process.env.PORT || config.get('PORT') || 3001)
+
+  const configService = app.get(ConfigService)
+
+  const port = Number(
+    process.env.PORT || configService.get<number>('PORT') || 3001,
+  )
 
   await app.listen(port, '0.0.0.0')
+
   console.log(`🚀 Server running on port ${port}`)
 }
 
