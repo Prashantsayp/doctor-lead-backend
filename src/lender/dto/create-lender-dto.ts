@@ -1,4 +1,11 @@
-import { IsString, IsNumber, IsNotEmpty, Min } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsNotEmpty,
+  Min,
+  Max,
+  IsBoolean,
+} from 'class-validator';
 
 export class CreateLenderDto {
 
@@ -7,14 +14,19 @@ export class CreateLenderDto {
   name: string;
 
   @IsNumber()
-  @Min(0)
+  @Min(300)
+  @Max(900)
   minCibil: number;
 
   @IsNumber()
   @Min(0)
+  @Max(100)
   maxFoir: number;
 
   @IsNumber()
   @Min(0)
   minIncome: number;
+
+  @IsBoolean()
+  isActive: boolean;
 }

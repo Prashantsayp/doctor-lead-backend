@@ -7,13 +7,17 @@ import {
   IsBoolean,
   Min,
   Max,
+  ArrayUnique,
 } from 'class-validator';
+
 import { Type } from 'class-transformer';
 
 export class CreateLenderPolicyDto {
-  @IsNotEmpty()
+
+  // AUTO GENERATED FROM BACKEND
+  @IsOptional()
   @IsString()
-  lenderId: string;
+  lenderId?: string;
 
   @IsNotEmpty()
   @IsString()
@@ -36,41 +40,57 @@ export class CreateLenderPolicyDto {
   @IsNotEmpty()
   @Type(() => Number)
   @IsNumber()
+  @Min(1000)
   minLoanAmount: number;
 
   @IsNotEmpty()
   @Type(() => Number)
   @IsNumber()
+  @Min(1000)
   maxLoanAmount: number;
 
   @IsOptional()
   @IsArray()
+  @ArrayUnique()
   @IsString({ each: true })
   allowedProfessions?: string[];
 
   @IsOptional()
   @IsArray()
+  @ArrayUnique()
   @IsString({ each: true })
   allowedLocations?: string[];
 
   @IsOptional()
   @IsArray()
+  @ArrayUnique()
   @IsString({ each: true })
   blockedLocations?: string[];
 
   @IsOptional()
   @IsArray()
+  @ArrayUnique()
   @IsString({ each: true })
   employmentTypes?: string[];
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
+  @Max(100)
   maxFOIR?: number;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
+  @Max(100)
+  roi?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   minIncome?: number;
 
   @IsOptional()
@@ -80,4 +100,8 @@ export class CreateLenderPolicyDto {
   @IsOptional()
   @IsString()
   remarks?: string;
+
+  @IsOptional()
+  @IsString()
+  policyType?: string;
 }
