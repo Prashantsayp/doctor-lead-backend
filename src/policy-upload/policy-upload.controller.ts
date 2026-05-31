@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Post,
   UploadedFile,
@@ -11,11 +12,22 @@ import { PolicyUploadService } from './policy-upload.service';
 export class PolicyUploadController {
   constructor(private readonly service: PolicyUploadService) {}
 
-  @Post()
+  // @Post('upload-policy')
+  // @UseInterceptors(FileInterceptor('file'))
+  // async upload(@UploadedFile() file: Express.Multer.File) {
+  //   if (!file) {
+  //     return { error: 'No file uploaded' };
+  //   }
+  // }
+
+   @Post('upload-policy')
   @UseInterceptors(FileInterceptor('file'))
   async upload(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
-      return { error: 'No file uploaded' };
+      throw new BadRequestException('No file uploaded');
     }
+
+    const result = await this.service.uploadPolicy(file);
+    return result;
   }
 }

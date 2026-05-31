@@ -10,7 +10,6 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// ✅ FIX: only ONE import
 const pdfParse = require('pdf-parse');
 
 import { OcrService } from '../ocr/ocr.service';
@@ -189,4 +188,53 @@ export class PolicyUploadService {
       },
     };
   }
+
+  
+async uploadPolicy(file: Express.Multer.File) {
+  let text = '';
+
+  this.logger.log(`📁 File: ${file.originalname} | MIME: ${file.mimetype} | Size: ${file.size}`);
+
+  // PDF parse
+  try {
+    const pdf = await pdfParse(file.buffer);
+    text = pdf?.text?.trim() || '';
+    this.logger.log(`📄 PDF text length: ${text.length}`);
+  } catch (err: any) {
+    this.logger.warn(`❌ PDF parse failed: ${err.message}`);
+  }
+
+  // OCR fallback
+  if (!text || text.length < 50) {
+    this.logger.log('🔁 Trying OCR...');
+    try {
+      text = await this.ocrService.extractText({ buffer: file.buffer, mimetype: file.mimetype } as any);
+      this.logger.log(`🧠 OCR text length: ${text.length}`);
+    } catch (err: any) {
+      this.logger.error(`❌ OCR failed: ${err.message}`);
+    }
+  }
+
+  if (!text?.trim()) {
+    this.logger.error('❌ Both PDF parse and OCR failed — no text extracted');
+    throw new BadRequestException('Could not extract text from file');
+  }
+
+  const extracted = await this.aiService.extractPolicyFields(text);
+  this.logger.log(`✅ Extracted fields: ${JSON.stringify(extracted)}`);
+
+  return {
+  extracted: {
+    lenderName:    extracted?.lenderName    || '',
+    minCibil:      extracted?.minCibil      || extracted?.minCibilScore || '',  // ✅
+    maxCibil:      extracted?.maxCibil      || '900',                           // ✅ default
+    maxFOIR:       extracted?.maxFOIR       || extracted?.maxFoir       || '',  // ✅
+    minIncome:     extracted?.minIncome     || '',
+    minLoanAmount: extracted?.minLoanAmount || '10000',                         // ✅ default
+    maxLoanAmount: extracted?.maxLoanAmount || '',
+    roi:           extracted?.roi           || extracted?.interestRate  || '',  // ✅
+  },
+
+  };
+}
 }

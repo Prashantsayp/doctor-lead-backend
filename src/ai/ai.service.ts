@@ -138,6 +138,44 @@ Rules:
     }
   }
 
+
+async extractPolicyFields(text: string) {
+const prompt = `
+You are a loan policy extractor. Extract the following fields from the text.
+
+TEXT:
+${text.slice(0, 6000)}
+
+Return ONLY this JSON, no explanation:
+{
+  "lenderName": "",
+  "minCibil": "",      
+  "maxCibil": "",      
+  "maxFOIR": "",       
+  "minIncome": "",
+  "minLoanAmount": "",
+  "maxLoanAmount": "",
+  "roi": ""
+}
+
+Rules:
+- Numbers only, no symbols like Rs or %
+- Empty string "" if truly not found
+- maxCibil default 900 if not mentioned
+- minLoanAmount default 10000 if not mentioned
+`
+
+  const response = await this.callAI(prompt);
+  this.logger.log(`🤖 AI Policy Response: ${JSON.stringify(response)}`);
+
+  if (!response.success || !response.data) {
+    this.logger.warn('AI extractPolicyFields failed');
+    return {};
+  }
+
+  return response.data; 
+}
+
   // ================= FINANCIAL EXTRACTION =================
   async extractFinancial(text: string, type: string) {
     try {

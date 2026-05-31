@@ -32,105 +32,53 @@ export class LenderPolicyService {
       Model<LenderPolicyDocument>,
   ) {}
 
-  /**
-   * Create policy
-   */
-  async create(
-    dto: CreateLenderPolicyDto,
-  ) {
+ async create(dto: CreateLenderPolicyDto) {
+
+
+    if (!dto.lenderId) {
+      dto.lenderId = dto.lenderName
+        .toUpperCase()
+        .replace(/\s+/g, '_')
+        .replace(/[^A-Z0-9_]/g, '')
+        + '_' + Date.now();
+    }
 
     this.validateBusinessRules(dto);
 
-    const existing =
-      await this.lenderPolicyModel.findOne({
-
-        lenderId: dto.lenderId,
-
-        policyType:
-          dto.policyType || '',
-
-        minCibil:
-          dto.minCibil,
-
-        maxCibil:
-          dto.maxCibil,
-
-        minLoanAmount:
-          dto.minLoanAmount,
-
-        maxLoanAmount:
-          dto.maxLoanAmount,
-
-        isActive: true,
-      });
+    const existing = await this.lenderPolicyModel.findOne({
+      lenderId:      dto.lenderId,
+      policyType:    dto.policyType || '',
+      minCibil:      dto.minCibil,
+      maxCibil:      dto.maxCibil,
+      minLoanAmount: dto.minLoanAmount,
+      maxLoanAmount: dto.maxLoanAmount,
+      isActive:      true,
+    });
 
     if (existing) {
-
-      throw new BadRequestException(
-        'Similar active policy already exists',
-      );
+      throw new BadRequestException('Similar active policy already exists');
     }
 
     try {
-
-      const policy =
-        await this.lenderPolicyModel.create({
-
-          ...dto,
-
-          lenderName:
-            dto.lenderName.toUpperCase(),
-
-          policyType:
-            dto.policyType?.toUpperCase() || '',
-
-          allowedProfessions:
-            Array.isArray(
-              dto.allowedProfessions,
-            )
-              ? dto.allowedProfessions
-              : [],
-
-          allowedLocations:
-            Array.isArray(
-              dto.allowedLocations,
-            )
-              ? dto.allowedLocations
-              : [],
-
-          blockedLocations:
-            Array.isArray(
-              dto.blockedLocations,
-            )
-              ? dto.blockedLocations
-              : [],
-
-          employmentTypes:
-            Array.isArray(
-              dto.employmentTypes,
-            )
-              ? dto.employmentTypes
-              : [],
-
-          isActive:
-            dto.isActive ?? true,
-        });
+      const policy = await this.lenderPolicyModel.create({
+        ...dto,
+        lenderName:          dto.lenderName.toUpperCase(),
+        policyType:          dto.policyType?.toUpperCase() || '',
+        allowedProfessions:  Array.isArray(dto.allowedProfessions)  ? dto.allowedProfessions  : [],
+        allowedLocations:    Array.isArray(dto.allowedLocations)    ? dto.allowedLocations    : [],
+        blockedLocations:    Array.isArray(dto.blockedLocations)    ? dto.blockedLocations    : [],
+        employmentTypes:     Array.isArray(dto.employmentTypes)     ? dto.employmentTypes     : [],
+        isActive:            dto.isActive ?? true,
+      });
 
       return {
-
         success: true,
-
-        message:
-          'Policy created successfully',
-
+        message: 'Policy created successfully',
         data: policy,
       };
 
     } catch (error: any) {
-
-      throw new BadRequestException(
-        error.message,
-      );
+      throw new BadRequestException(error.message);
     }
   }
 

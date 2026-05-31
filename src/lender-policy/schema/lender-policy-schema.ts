@@ -24,7 +24,7 @@ export class LenderPolicy {
    */
   @Prop({
     type: String,
-    required: true,
+    required: false,
     unique: true,
     trim: true,
     uppercase: true,
